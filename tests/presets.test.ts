@@ -4,16 +4,42 @@ import { COMEBACK_CURVE_CSV } from '../src/presets/comebackCurve.js';
 import { SCALING_COMPARISON_CSV, SCALING_COMPARISON_0_3K_CSV } from '../src/presets/scalingComparison.js';
 import { BIG_NUMBER_VARIANTS } from '../src/presets/bigNumbers.js';
 import { parseCsv } from '../src/shared/csv.js';
-import { TEMPLATE_META } from '../src/templates/index.js';
+import { parseHeatmapCsv, parseScatterCsv, parseSeriesCsv } from '../src/shared/schemas.js';
+import { ILLUSTRATIVE } from '../src/presets/examples.js';
+import { TEMPLATE_IDS, TEMPLATE_META } from '../src/templates/index.js';
 
 describe('preset data integrity', () => {
-  it('ships the four selectable presets', () => {
+  it('ships one immediately selectable preset per template family', () => {
     expect(PRESETS.map((p) => p.id)).toEqual([
       'comeback-curve',
+      'comeback-curve-line',
+      'comeback-curve-area',
       'scaling-comparison',
       'scaling-comparison-0-3k',
       'big-numbers',
+      'donut-example',
+      'stacked-example',
+      'scatter-example',
+      'heatmap-example',
     ]);
+  });
+
+  it('covers every registered template with at least one preset', () => {
+    const covered = new Set(PRESETS.map((p) => p.template));
+    for (const id of TEMPLATE_IDS) expect(covered.has(id), id).toBe(true);
+  });
+
+  it('labels every synthetic example as illustrative, and no real preset as such', () => {
+    const synthetic = ['donut-example', 'stacked-example', 'scatter-example', 'heatmap-example'];
+    for (const preset of PRESETS) {
+      expect(preset.subtitle === ILLUSTRATIVE, preset.id).toBe(synthetic.includes(preset.id));
+    }
+  });
+
+  it('reuses the real Comeback Curve data for the Area preset', () => {
+    const area = getPreset('comeback-curve-area');
+    expect(area?.template).toBe('area');
+    expect(area?.csv).toBe(COMEBACK_CURVE_CSV);
   });
 
   it('keeps the Comeback Curve values exactly as supplied', () => {
@@ -74,21 +100,45 @@ describe('preset data integrity', () => {
     expect(BIG_NUMBER_VARIANTS.map((v) => v.value)).toEqual([11149, 5.6, 5968.5]);
   });
 
-  it('parses every dataset preset within its template category limits', () => {
+  it('parses every dataset preset with the schema its template declares', () => {
     for (const preset of PRESETS) {
       if (!preset.csv) continue;
-      const parsed = parseCsv(preset.csv, preset.valueMode);
-      expect(parsed.ok, `${preset.id} should parse`).toBe(true);
-      if (!parsed.ok) continue;
       const meta = TEMPLATE_META[preset.template];
-      expect(parsed.data.length).toBeGreaterThanOrEqual(meta.minCategories);
-      expect(parsed.data.length).toBeLessThanOrEqual(meta.maxCategories);
+      switch (meta.schema) {
+        case 'category-value': {
+          const parsed = parseCsv(preset.csv, preset.valueMode);
+          expect(parsed.ok, `${preset.id} should parse`).toBe(true);
+          if (!parsed.ok) break;
+          expect(parsed.data.length).toBeGreaterThanOrEqual(meta.minCategories);
+          expect(parsed.data.length).toBeLessThanOrEqual(meta.maxCategories);
+          break;
+        }
+        case 'category-series': {
+          const parsed = parseSeriesCsv(preset.csv, preset.valueMode);
+          expect(parsed.ok, `${preset.id} should parse`).toBe(true);
+          if (parsed.ok) expect(parsed.table.series.length).toBeGreaterThanOrEqual(2);
+          break;
+        }
+        case 'xy-label': {
+          const parsed = parseScatterCsv(preset.csv);
+          expect(parsed.ok, `${preset.id} should parse`).toBe(true);
+          break;
+        }
+        case 'xy-value': {
+          const parsed = parseHeatmapCsv(preset.csv, preset.valueMode);
+          expect(parsed.ok, `${preset.id} should parse`).toBe(true);
+          break;
+        }
+        default:
+          throw new Error(`${preset.id} has a csv but schema ${meta.schema}`);
+      }
     }
   });
 
   it('only highlights a category that exists in its own dataset', () => {
     for (const preset of PRESETS) {
       if (!preset.csv || !preset.highlight) continue;
+      if (TEMPLATE_META[preset.template].schema !== 'category-value') continue;
       const parsed = parseCsv(preset.csv, preset.valueMode);
       if (!parsed.ok) continue;
       expect(parsed.data.some((d) => d.category === preset.highlight)).toBe(true);

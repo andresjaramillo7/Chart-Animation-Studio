@@ -7,7 +7,7 @@ This app is self-contained. It reads nothing but the CSV and background images y
 it, and writes nothing outside `outputs/` and its own `.cache/`. Uploaded CSV files are
 read in the browser and never modified.
 
-**Templates:** Animated Bar · Animated Line · Comparison Chart · Big Number
+**Templates (9):** Animated Bar · Comparison · Stacked Bar · Animated Line · Area · Donut · Scatter · Heatmap · Big Number
 **Resolutions:** 1920×1080 landscape and 1080×1920 portrait (Shorts), both 30 fps
 **Formats:** MP4 (H.264) · PNG (final frame) · PNG sequence (every frame, RGBA)
 **Backgrounds:** solid color · uploaded image (cover/contain) · transparent
@@ -56,17 +56,21 @@ http://127.0.0.1:5173/api/health to see which one was picked.
 ## Exporting
 
 1. `npm run dev`, open http://127.0.0.1:5173/.
-2. Pick a **Chart type** and a **Preset**. Presets load their own template, copy, data
-   and settings; switching preset or chart type clears settings the new template does
-   not use.
-3. Edit the title, subtitle and data — paste CSV or click **Upload CSV…**.
-4. Choose a theme, or adjust the four colors by hand.
-5. Set **Duration**, **Easing**, **Reveal** and **Final-frame hold**. The panel shows
+2. Pick a **Chart type**, or click **Browse template gallery…** to see all nine with
+   live miniature previews grouped by Comparison, Trends, Distribution, Relationships
+   and Statistics. Selecting one opens the editor on that template's example.
+3. Pick a **Preset**. Presets load their own template, copy, data and settings;
+   switching preset or chart type clears settings the new template does not use, and
+   loads the new template's example when the CSV shape differs.
+4. Edit the title, subtitle and data — paste CSV or click **Upload CSV…**. The panel
+   shows the exact columns the selected template expects.
+5. Choose a theme, or adjust the four colors by hand.
+6. Set **Duration**, **Easing**, **Reveal** and **Final-frame hold**. The panel shows
    the exact frame count and video length before you export.
-6. Set the **Composition**: background mode, and which elements are drawn.
-7. Choose a **Resolution** and **Format**, type a filename, and click Export. Progress is
+7. Set the **Composition**: background mode, and which elements are drawn.
+8. Choose a **Resolution** and **Format**, type a filename, and click Export. Progress is
    reported frame by frame.
-8. The finished file appears in **`outputs/`** and its name is shown in the UI.
+9. The finished file appears in **`outputs/`** and its name is shown in the UI.
 
 Existing files are never overwritten — a colliding name becomes `name-1.mp4`,
 `name-2.mp4`, and so on. The same applies to PNG files and to PNG sequence directories
@@ -122,14 +126,61 @@ and transparent mode compose freely.
 Composition settings are independent of the chart: changing preset, template, dataset or
 animation settings leaves the background and visibility untouched.
 
+### The nine templates
+
+| Template | Group | CSV columns | Notes |
+|---|---|---|---|
+| Animated Bar | Comparison | `category,value` | Vertical or horizontal; simultaneous or sequential |
+| Comparison | Comparison | `category,value` | Two or three values, outsized read-outs |
+| Stacked Bar | Comparison | `category,<series…>` | Two or more series; raw or 100% stacked; both orientations |
+| Animated Line | Trends | `category,value` | Progressive line drawing |
+| Area | Trends | `category,value` | The same line engine with a fill beneath it |
+| Donut | Distribution | `category,value` | Clockwise sweep; configurable inner radius |
+| Scatter | Relationships | `x,y,label` | `label` optional; duplicate coordinates allowed |
+| Heatmap | Relationships | `x,y,value` | Missing cells stay blank; never become zero |
+| Big Number | Statistics | — | Numeric input, no placeholder rows |
+
 ### Presets
 
 | Preset | Template | Data |
 |---|---|---|
-| Comeback Curve | Animated Bar (works with Animated Line too) | Comeback rate by gold deficit, 7 buckets |
-| Scaling Comparison | Comparison Chart | Comeback rate by champion scaling, 3 categories |
-| Scaling Comparison — 0–3k | Comparison Chart | Same, restricted to a 0–3,000 gold deficit |
+| Comeback Curve | Animated Bar | Comeback rate by gold deficit, 7 buckets |
+| Comeback Curve — Line | Animated Line | The same real dataset |
+| Comeback Curve — Area | Area | The same real dataset |
+| Scaling Comparison | Comparison | Comeback rate by champion scaling, 3 categories |
+| Scaling Comparison — 0–3k | Comparison | Same, restricted to a 0–3,000 gold deficit |
 | Big Numbers | Big Number | Three individually selectable variants (A, B, C) |
+| Donut — Example Split | Donut | **Synthetic** demonstration data |
+| Stacked Bar — Example Groups | Stacked Bar | **Synthetic** demonstration data |
+| Scatter — Example Pairs | Scatter | **Synthetic** demonstration data |
+| Heatmap — Example Grid | Heatmap | **Synthetic** demonstration data |
+
+Every synthetic preset carries the subtitle *"Illustrative example data, not a study
+result."* Nothing synthetic is presented as an observation.
+
+### Data rules the new templates add
+
+- **Donut** — parts of one whole. Negative values and an all-zero dataset are rejected.
+  In percentage mode the segments must total 100 within a tolerance of **0.01**, which
+  absorbs binary floating-point drift without letting a real mistake through; totals are
+  never silently normalized. In number mode the proportions are derived from the values
+  as supplied, and the values themselves are untouched.
+- **Stacked Bar** — category order and series order both follow the source, and a series
+  keeps its colour when the data changes. *Regular* mode shows the raw values. *100%
+  stacked* derives each segment from that category's own total and displays the result
+  as a percentage against a 0–100% axis; a category totalling zero is rejected rather
+  than divided by. Labels are dropped on segments too small to hold them.
+- **Area** — the fill is an `areaStyle` on the same series the line draws, so it always
+  ends at the line's interpolated head. Source observations are used exactly;
+  interpolation only draws the segment in progress.
+- **Scatter** — coordinates are never altered; only symbol size and opacity animate.
+  Duplicate coordinates are kept, because two observations may share a position. No
+  regression line, correlation or other derived statistic is drawn.
+- **Heatmap** — both axes keep first-appearance order, duplicate `x,y` pairs are
+  rejected, and combinations that are not supplied stay **blank** rather than becoming
+  zero; a zero-valued cell is drawn at the bottom of the colour scale, so the two are
+  visually distinct. Percentage data uses a fixed 0–100 scale; numeric data derives one
+  from the supplied values.
 
 ## Running tests
 
@@ -146,8 +197,8 @@ npm run typecheck
 ```
 index.html   + src/ui/        the editor and live preview
 render.html  + src/render/    headless render host Playwright drives
-src/templates/               the four templates: (spec, progress, canvas, composition) -> option
-src/shared/                  types, CSV validation, timeline, layout, formatting
+src/templates/               the nine templates: (spec, progress, canvas, composition) -> option
+src/shared/                  types, CSV parsing + per-template schemas, timeline, layout, formatting
 src/presets/                 example data and copy, kept separate from the templates
 server/                      Express + Vite middleware, export API, Playwright, FFmpeg, uploads
 outputs/                     finished MP4 / PNG files and PNG sequence directories
@@ -159,7 +210,7 @@ One Node process serves the editor, the render host and the `/api` routes on por
 so Playwright always reaches the render page at a known URL. The browser never touches
 the filesystem; all export work happens in the backend. The export pipeline only calls
 `init(spec, width, height, composition)` then `renderFrame(progress)`, so it is entirely
-template-agnostic and every composition setting applies to all four templates.
+template-agnostic and every composition setting applies to all nine templates.
 
 ### Deterministic animation
 
@@ -172,6 +223,11 @@ the frame. Re-running an export produces the same video.
 Every template is a pure function of `(spec, progress, canvas, composition)`:
 
 - **Animated Bar** interpolates each bar from zero to its value.
+- **Stacked Bar** scales each category's whole stack from zero together.
+- **Donut** sweeps `progress × 360` degrees clockwise, so a part-drawn ring really is
+  part-drawn rather than a finished donut fading in.
+- **Scatter** grows each point's symbol from zero on a window derived from its index.
+- **Heatmap** opens cells on a per-row window; an unrevealed cell is simply absent.
 - **Animated Line** advances a drawing head along the category index, revealing whole
   points and interpolating the one partially drawn segment. It is a genuinely shorter
   polyline each frame, not a fade-in.
@@ -254,6 +310,14 @@ the whole `.cache/` directory at any time; it is regenerated as needed.
 
 **"Comparison Chart requires between 2 and 3 categories"**
 That template is deliberately limited. Use Animated Bar for longer datasets.
+
+**"Percentage segments total 85%, not 100%"**
+A donut shows parts of one whole. Either fix the data, or switch Data mode to Number,
+which derives the proportions from the values exactly as supplied.
+
+**"A stacked bar needs at least two series columns"**
+The stacked bar expects `category` followed by one column per series, e.g.
+`category,Series A,Series B`.
 
 **"MP4 … cannot be exported as MP4" with a transparent background**
 Pick PNG or PNG sequence, or set the background to a solid color or an image.

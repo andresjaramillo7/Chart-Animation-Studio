@@ -12,12 +12,15 @@ import {
   type ChartSpec,
   type Composition,
   type DataPoint,
+  type DonutDisplay,
   type Easing,
   type ExportFormat,
+  type HeatmapReveal,
   type ImageFit,
   type JobState,
   type Orientation,
   type Reveal,
+  type StackMode,
   type TemplateId,
   type Theme,
   type ThemeId,
@@ -25,10 +28,29 @@ import {
   type VisibilitySpec,
 } from '../shared/types.js';
 import { parseCsv } from '../shared/csv.js';
+import {
+  cellKey,
+  parseHeatmapCsv,
+  parseScatterCsv,
+  parseSeriesCsv,
+  validateDonutData,
+  validatePercentStack,
+  type HeatTable,
+  type ScatterTable,
+  type SeriesTable,
+} from '../shared/schemas.js';
 import { buildTimeline, frameProgress } from '../shared/timeline.js';
 import { RESOLUTIONS, RESOLUTION_LABELS, type ResolutionId } from '../shared/layout.js';
-import { buildOption, supportedVisibility, TEMPLATE_IDS, TEMPLATE_META } from '../templates/index.js';
-import { PRESETS, getPreset } from '../presets/index.js';
+import {
+  buildOption,
+  SCHEMA_HEADERS,
+  supportedVisibility,
+  TEMPLATE_GROUPS,
+  TEMPLATE_IDS,
+  TEMPLATE_META,
+  templatesInGroup,
+} from '../templates/index.js';
+import { PRESETS, getPreset, presetForTemplate } from '../presets/index.js';
 import type { BigNumberVariant } from '../presets/bigNumbers.js';
 
 const FPS = 30;
@@ -41,16 +63,32 @@ const $ = <T extends HTMLElement>(id: string): T => {
 
 const els = {
   template: $<HTMLSelectElement>('template'),
+  openGallery: $<HTMLButtonElement>('openGallery'),
+  closeGallery: $<HTMLButtonElement>('closeGallery'),
+  gallery: $<HTMLDivElement>('gallery'),
+  galleryBody: $<HTMLDivElement>('galleryBody'),
   preset: $<HTMLSelectElement>('preset'),
   variant: $<HTMLSelectElement>('variant'),
   title: $<HTMLInputElement>('title'),
   subtitle: $<HTMLInputElement>('subtitle'),
   valueMode: $<HTMLSelectElement>('valueMode'),
+  schemaHint: $<HTMLElement>('schemaHint'),
   csv: $<HTMLTextAreaElement>('csv'),
   uploadBtn: $<HTMLButtonElement>('uploadBtn'),
   uploadInput: $<HTMLInputElement>('uploadInput'),
   highlight: $<HTMLSelectElement>('highlight'),
   orientation: $<HTMLSelectElement>('orientation'),
+  stackMode: $<HTMLSelectElement>('stackMode'),
+  innerRadius: $<HTMLInputElement>('innerRadius'),
+  donutDisplay: $<HTMLSelectElement>('donutDisplay'),
+  showTotal: $<HTMLInputElement>('showTotal'),
+  centerLabel: $<HTMLInputElement>('centerLabel'),
+  areaOpacity: $<HTMLInputElement>('areaOpacity'),
+  showPoints: $<HTMLInputElement>('showPoints'),
+  xTitle: $<HTMLInputElement>('xTitle'),
+  yTitle: $<HTMLInputElement>('yTitle'),
+  symbolSize: $<HTMLInputElement>('symbolSize'),
+  heatReveal: $<HTMLSelectElement>('heatReveal'),
   bnValue: $<HTMLInputElement>('bnValue'),
   bnDecimals: $<HTMLInputElement>('bnDecimals'),
   bnPrefix: $<HTMLInputElement>('bnPrefix'),
@@ -87,13 +125,14 @@ const els = {
   preview: $<HTMLDivElement>('preview'),
 };
 
+/** Parsed data, one slot per schema; only the active template's slot is used. */
 let data: DataPoint[] = [];
-/** Gridline color comes from the selected theme; only the four named colors are editable. */
+let seriesTable: SeriesTable | null = null;
+let scatterTable: ScatterTable | null = null;
+let heatTable: HeatTable | null = null;
+
 let gridColor: string = THEMES['dark-minimal'].grid;
-/**
- * Composition state lives outside the chart spec, so background and visibility survive
- * a change of template, preset or dataset.
- */
+/** Composition survives a change of template, preset or dataset. */
 let show: VisibilitySpec = { ...ALL_VISIBLE };
 let backgroundImageId: string | null = null;
 let chart: echarts.ECharts | null = null;
@@ -110,7 +149,7 @@ for (const id of Object.keys(EXPORT_FORMAT_LABELS) as ExportFormat[]) {
   els.format.add(new Option(EXPORT_FORMAT_LABELS[id], id));
 }
 
-/* ---------- preview: the real composition, scaled down ---------- */
+/* ---------- preview ---------- */
 
 function canvas() {
   return RESOLUTIONS[els.resolution.value as ResolutionId];
@@ -122,9 +161,7 @@ function ensureChart(): echarts.ECharts {
     chart.dispose();
     chart = null;
   }
-  if (!chart) {
-    chart = echarts.init(els.preview, undefined, { renderer: 'canvas', width, height });
-  }
+  if (!chart) chart = echarts.init(els.preview, undefined, { renderer: 'canvas', width, height });
   return chart;
 }
 
@@ -143,17 +180,9 @@ window.addEventListener('resize', () => {
 
 /* ---------- state ---------- */
 
-function template(): TemplateId {
-  return els.template.value as TemplateId;
-}
-
-function format(): ExportFormat {
-  return els.format.value as ExportFormat;
-}
-
-function transparentMode(): boolean {
-  return els.bgMode.value === 'transparent';
-}
+const template = (): TemplateId => els.template.value as TemplateId;
+const format = (): ExportFormat => els.format.value as ExportFormat;
+const transparentMode = (): boolean => els.bgMode.value === 'transparent';
 
 function theme(): Theme {
   return {
@@ -183,26 +212,73 @@ function currentSpec(): ChartSpec {
     valueMode: els.valueMode.value as ValueMode,
     theme: theme(),
   };
-  const id = template();
-  switch (id) {
+  const highlight = els.highlight.value || null;
+
+  switch (template()) {
     case 'animated-bar':
       return {
         ...base,
         template: 'animated-bar',
         data,
-        highlight: els.highlight.value || null,
+        highlight,
         orientation: els.orientation.value as Orientation,
         reveal: els.reveal.value as Reveal,
       };
     case 'animated-line':
-      return { ...base, template: 'animated-line', data, highlight: els.highlight.value || null };
+      return { ...base, template: 'animated-line', data, highlight };
     case 'comparison':
+      return { ...base, template: 'comparison', data, highlight, reveal: els.reveal.value as Reveal };
+    case 'donut':
       return {
         ...base,
-        template: 'comparison',
+        template: 'donut',
         data,
-        highlight: els.highlight.value || null,
+        highlight,
+        innerRadius: clampNumber(els.innerRadius.value, 0, 90, 58),
+        display: els.donutDisplay.value as DonutDisplay,
+        showTotal: els.showTotal.checked,
+        centerLabel: els.centerLabel.value,
+      };
+    case 'area':
+      return {
+        ...base,
+        template: 'area',
+        data,
+        highlight,
+        areaOpacity: clampNumber(els.areaOpacity.value, 0, 1, 0.28),
+        showPoints: els.showPoints.checked,
+      };
+    case 'stacked-bar':
+      return {
+        ...base,
+        template: 'stacked-bar',
+        categories: seriesTable?.categories ?? [],
+        series: seriesTable?.series ?? [],
+        stackMode: els.stackMode.value as StackMode,
+        orientation: els.orientation.value as Orientation,
         reveal: els.reveal.value as Reveal,
+        highlight,
+      };
+    case 'scatter':
+      return {
+        ...base,
+        template: 'scatter',
+        points: scatterTable?.points ?? [],
+        xTitle: els.xTitle.value,
+        yTitle: els.yTitle.value,
+        symbolSize: clampNumber(els.symbolSize.value, 4, 200, 34),
+        reveal: els.reveal.value as Reveal,
+        highlight,
+      };
+    case 'heatmap':
+      return {
+        ...base,
+        template: 'heatmap',
+        xCategories: heatTable?.xCategories ?? [],
+        yCategories: heatTable?.yCategories ?? [],
+        cells: heatTable?.cells ?? [],
+        heatReveal: els.heatReveal.value as HeatmapReveal,
+        highlight,
       };
     case 'big-number':
       return {
@@ -216,6 +292,12 @@ function currentSpec(): ChartSpec {
         separators: els.bnSeparators.checked,
       };
   }
+}
+
+function clampNumber(raw: string, min: number, max: number, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
 }
 
 function animationSpec() {
@@ -239,10 +321,20 @@ const VISIBILITY_LABELS: Record<keyof VisibilitySpec, string> = {
   valueLabels: 'Value labels',
 };
 
+/** Heatmap calls its legend a colour scale, and its value labels cell labels. */
+function visibilityLabel(id: TemplateId, key: keyof VisibilitySpec): string {
+  if (id === 'heatmap' && key === 'legend') return 'Colour scale';
+  if (id === 'heatmap' && key === 'valueLabels') return 'Cell labels';
+  if (id === 'donut' && key === 'valueLabels') return 'Segment labels';
+  if (id === 'scatter' && key === 'valueLabels') return 'Point labels';
+  return VISIBILITY_LABELS[key];
+}
+
 /** Only offer toggles for elements the selected template actually draws. */
 function renderVisibilityToggles(): void {
   els.visibility.innerHTML = '';
-  for (const key of supportedVisibility(template())) {
+  const id = template();
+  for (const key of supportedVisibility(id)) {
     const label = document.createElement('label');
     const input = document.createElement('input');
     input.type = 'checkbox';
@@ -251,15 +343,16 @@ function renderVisibilityToggles(): void {
       show = { ...show, [key]: input.checked };
       draw(1);
     });
-    label.append(input, document.createTextNode(VISIBILITY_LABELS[key]));
+    label.append(input, document.createTextNode(visibilityLabel(id, key)));
     els.visibility.append(label);
   }
 }
 
-/* ---------- field visibility: only show what the template uses ---------- */
+/* ---------- field visibility ---------- */
 
 function applyVisibility(): void {
-  const meta = TEMPLATE_META[template()];
+  const id = template();
+  const meta = TEMPLATE_META[id];
   const fields: Record<string, boolean> = {
     valueMode: meta.needsData,
     csv: meta.needsData,
@@ -267,27 +360,27 @@ function applyVisibility(): void {
     orientation: meta.supportsOrientation,
     reveal: meta.supportsReveal,
     bigNumber: !meta.needsData,
-    variant: template() === 'big-number',
+    variant: id === 'big-number',
     bgImage: els.bgMode.value === 'image',
+    donut: id === 'donut',
+    stack: id === 'stacked-bar',
+    areaOpts: id === 'area',
+    scatterOpts: id === 'scatter',
+    heatOpts: id === 'heatmap',
   };
   for (const [field, visible] of Object.entries(fields)) {
     for (const el of document.querySelectorAll<HTMLElement>(`[data-field="${field}"]`)) {
       el.hidden = !visible;
     }
   }
+  els.schemaHint.textContent = SCHEMA_HEADERS[meta.schema];
+
   const { width, height } = canvas();
   els.formatBadge.textContent = `${meta.label} · ${width}×${height} · ${FPS} fps`;
-
-  // Preview-only: the checkerboard shows through the transparent canvas so the user can
-  // see what is and is not being drawn. It exists only in this page, never in render.html.
   els.previewFrame.classList.toggle('checkered', transparentMode());
   els.exportBtn.textContent = format() === 'mp4' ? 'Export MP4' : 'Export PNG';
 }
 
-/**
- * Transparency has no home in an H.264/yuv420p MP4, so the combination is refused with
- * an explanation rather than silently flattened onto an opaque background.
- */
 function transparencyConflict(): boolean {
   const conflict = transparentMode() && !supportsTransparency(format());
   if (conflict) {
@@ -302,9 +395,36 @@ function transparencyConflict(): boolean {
 
 /* ---------- data ---------- */
 
+function fail(errors: string[]): false {
+  els.dataStatus.className = 'status error';
+  els.dataStatus.textContent = errors.join('\n');
+  els.exportBtn.disabled = true;
+  return false;
+}
+
+function succeed(message: string, highlightOptions: Array<{ value: string; label: string }>): true {
+  els.dataStatus.className = 'status ok';
+  els.dataStatus.textContent = message;
+  els.exportBtn.disabled = false;
+
+  const previous = els.highlight.value;
+  els.highlight.innerHTML = '';
+  els.highlight.add(new Option('None', ''));
+  for (const o of highlightOptions) els.highlight.add(new Option(o.label, o.value));
+  els.highlight.value = highlightOptions.some((o) => o.value === previous) ? previous : '';
+  return true;
+}
+
+/**
+ * Parse the CSV with the schema the selected template declares, then apply that
+ * template's own extra rules. General parsing and template rules stay separate.
+ */
 function refreshData(): boolean {
-  const meta = TEMPLATE_META[template()];
-  if (!meta.needsData) {
+  const id = template();
+  const meta = TEMPLATE_META[id];
+  const mode = els.valueMode.value as ValueMode;
+
+  if (meta.schema === 'none') {
     const value = Number(els.bnValue.value);
     const ok = els.bnValue.value.trim() !== '' && Number.isFinite(value);
     els.dataStatus.className = ok ? 'status ok' : 'status error';
@@ -313,47 +433,74 @@ function refreshData(): boolean {
     return ok;
   }
 
-  const result = parseCsv(els.csv.value, els.valueMode.value as ValueMode);
-  if (!result.ok) {
-    els.dataStatus.className = 'status error';
-    els.dataStatus.textContent = result.errors.join('\n');
-    els.exportBtn.disabled = true;
-    return false;
+  if (meta.schema === 'category-value') {
+    const result = parseCsv(els.csv.value, mode);
+    if (!result.ok) return fail(result.errors);
+    const count = result.data.length;
+    if (count < meta.minCategories || count > meta.maxCategories) {
+      return fail([
+        `${meta.label} requires between ${meta.minCategories} and ${meta.maxCategories} categories; the CSV has ${count}.`,
+      ]);
+    }
+    if (id === 'donut') {
+      const donutErrors = validateDonutData(result.data, mode);
+      if (donutErrors.length) return fail(donutErrors);
+    }
+    data = result.data;
+    return succeed(
+      `${count} categories parsed in source order.`,
+      data.map((d) => ({ value: d.category, label: d.category })),
+    );
   }
 
-  const count = result.data.length;
-  if (count < meta.minCategories || count > meta.maxCategories) {
-    els.dataStatus.className = 'status error';
-    els.dataStatus.textContent =
-      meta.minCategories === meta.maxCategories
-        ? `${meta.label} requires exactly ${meta.minCategories} categories; the CSV has ${count}.`
-        : `${meta.label} requires between ${meta.minCategories} and ${meta.maxCategories} categories; the CSV has ${count}.`;
-    els.exportBtn.disabled = true;
-    return false;
+  if (meta.schema === 'category-series') {
+    const result = parseSeriesCsv(els.csv.value, mode);
+    if (!result.ok) return fail(result.errors);
+    if (els.stackMode.value === 'percent') {
+      const stackErrors = validatePercentStack(result.table);
+      if (stackErrors.length) return fail(stackErrors);
+    }
+    seriesTable = result.table;
+    return succeed(
+      `${result.table.categories.length} categories × ${result.table.series.length} series, in source order.`,
+      [
+        ...result.table.categories.map((c) => ({ value: c, label: `Category: ${c}` })),
+        ...result.table.series.map((s) => ({ value: s.name, label: `Series: ${s.name}` })),
+      ],
+    );
   }
 
-  data = result.data;
-  els.dataStatus.className = 'status ok';
-  els.dataStatus.textContent = `${count} categories parsed in source order.`;
-  els.exportBtn.disabled = false;
+  if (meta.schema === 'xy-label') {
+    const result = parseScatterCsv(els.csv.value);
+    if (!result.ok) return fail(result.errors);
+    scatterTable = result.table;
+    const labelled = result.table.points.filter((p) => p.label !== '');
+    return succeed(
+      `${result.table.points.length} points parsed${result.table.hasLabels ? ' with labels' : ''}.`,
+      labelled.map((p) => ({ value: p.label, label: p.label })),
+    );
+  }
 
-  const previous = els.highlight.value;
-  els.highlight.innerHTML = '';
-  els.highlight.add(new Option('None', ''));
-  for (const d of data) els.highlight.add(new Option(d.category, d.category));
-  els.highlight.value = data.some((d) => d.category === previous) ? previous : '';
-  return true;
+  const result = parseHeatmapCsv(els.csv.value, mode);
+  if (!result.ok) return fail(result.errors);
+  heatTable = result.table;
+  const grid = result.table.xCategories.length * result.table.yCategories.length;
+  const missing = grid - result.table.cells.length;
+  return succeed(
+    `${result.table.cells.length} cells across ${result.table.xCategories.length} × ${result.table.yCategories.length}` +
+      (missing > 0 ? ` — ${missing} combination${missing > 1 ? 's' : ''} left blank, not zero.` : '.'),
+    result.table.cells.map((c) => ({ value: cellKey(c.x, c.y), label: `${c.x} / ${c.y}` })),
+  );
 }
 
 function refreshTimeline(): void {
   try {
     const t = buildTimeline(animationSpec());
-    const frames = format() === 'png' ? 1 : t.totalFrames;
     els.timelineInfo.className = 'status';
     els.timelineInfo.textContent =
       format() === 'png'
         ? `PNG captures the final frame only (1 of ${t.totalFrames}).`
-        : `${t.animationFrames} animation + ${t.holdFrames} hold = ${frames} frames ` +
+        : `${t.animationFrames} animation + ${t.holdFrames} hold = ${t.totalFrames} frames ` +
           `(${t.durationSeconds.toFixed(3)} s at ${t.fps} fps).`;
   } catch (err) {
     els.timelineInfo.className = 'status error';
@@ -361,10 +508,6 @@ function refreshTimeline(): void {
   }
 }
 
-/**
- * Mirror the render host's background layering in the editor so the preview matches the
- * export: solid color, image, or nothing at all behind a transparent canvas.
- */
 function applyPreviewBackground(): void {
   const el = els.preview;
   const mode = els.bgMode.value as BackgroundMode;
@@ -376,16 +519,23 @@ function applyPreviewBackground(): void {
   if (mode === 'solid') {
     el.style.backgroundColor = els.cBackground.value;
   } else if (mode === 'image' && backgroundImageId) {
-    // Matches the render host: the theme color fills any letterbox left by "contain".
     el.style.backgroundColor = els.cBackground.value;
     el.style.backgroundImage = `url("/api/backgrounds/${backgroundImageId}")`;
     el.style.backgroundSize = els.bgFit.value === 'contain' ? 'contain' : 'cover';
   }
 }
 
+function hasData(): boolean {
+  const schema = TEMPLATE_META[template()].schema;
+  if (schema === 'none') return true;
+  if (schema === 'category-value') return data.length > 0;
+  if (schema === 'category-series') return (seriesTable?.categories.length ?? 0) > 0;
+  if (schema === 'xy-label') return (scatterTable?.points.length ?? 0) > 0;
+  return (heatTable?.cells.length ?? 0) > 0;
+}
+
 function draw(progress = 1): void {
-  const meta = TEMPLATE_META[template()];
-  if (meta.needsData && data.length === 0) return;
+  if (!hasData()) return;
   const instance = ensureChart();
   instance.setOption(buildOption(currentSpec(), progress, canvas(), composition()), {
     notMerge: true,
@@ -404,7 +554,7 @@ function refreshAll(): void {
   if (ok) draw(1);
 }
 
-/* ---------- preview replay, driven by the same deterministic timeline ---------- */
+/* ---------- preview replay ---------- */
 
 let replayHandle = 0;
 function replay(): void {
@@ -527,6 +677,17 @@ function loadPreset(id: string): void {
   els.csv.value = preset.csv ? preset.csv.trim() : '';
   els.orientation.value = preset.orientation ?? 'vertical';
   els.reveal.value = preset.reveal ?? 'simultaneous';
+  els.stackMode.value = preset.stackMode ?? 'regular';
+  els.innerRadius.value = String(preset.innerRadius ?? 58);
+  els.donutDisplay.value = preset.donutDisplay ?? 'percent';
+  els.showTotal.checked = preset.showTotal ?? false;
+  els.centerLabel.value = preset.centerLabel ?? '';
+  els.areaOpacity.value = String(preset.areaOpacity ?? 0.28);
+  els.showPoints.checked = preset.showPoints ?? true;
+  els.xTitle.value = preset.xTitle ?? '';
+  els.yTitle.value = preset.yTitle ?? '';
+  els.symbolSize.value = String(preset.symbolSize ?? 34);
+  els.heatReveal.value = preset.heatReveal ?? 'simultaneous';
   els.filename.value = preset.filename;
 
   els.variant.innerHTML = '';
@@ -543,24 +704,189 @@ function loadPreset(id: string): void {
   refreshTimeline();
   fitPreview();
   draw(1);
+  renderGallery();
 }
 
 /**
- * Changing the chart type keeps the dataset when it is still compatible and clears
- * settings the new template does not use.
+ * Changing the chart type clears settings the new template does not use. When the new
+ * template needs a different CSV shape, its own example is loaded rather than leaving
+ * data that cannot parse.
  */
 function onTemplateChange(): void {
-  const meta = TEMPLATE_META[template()];
+  const id = template();
+  const meta = TEMPLATE_META[id];
   if (!meta.supportsOrientation) els.orientation.value = 'vertical';
   if (!meta.supportsReveal) els.reveal.value = 'simultaneous';
   if (!meta.supportsHighlight) els.highlight.value = '';
-  if (!meta.needsData && !els.bnValue.value) applyVariant(PRESETS[3].variants![0]);
+
+  const previousSchema = els.csv.dataset.schema;
+  if (meta.needsData && previousSchema && previousSchema !== meta.schema) {
+    const preset = presetForTemplate(id);
+    if (preset?.csv) {
+      els.csv.value = preset.csv.trim();
+      els.valueMode.value = preset.valueMode;
+      els.xTitle.value = preset.xTitle ?? '';
+      els.yTitle.value = preset.yTitle ?? '';
+      els.highlight.value = '';
+    }
+  }
+  els.csv.dataset.schema = meta.schema;
+  if (!meta.needsData && !els.bnValue.value) {
+    const bn = PRESETS.find((p) => p.variants?.length);
+    if (bn?.variants) applyVariant(bn.variants[0]);
+  }
   refreshAll();
+  renderGallery();
+}
+
+/* ---------- template gallery ---------- */
+
+const THUMB: { width: number; height: number } = { width: 460, height: 259 };
+const thumbCharts: echarts.ECharts[] = [];
+
+/** A miniature of the real composition, built from the same registry. */
+function thumbSpec(id: TemplateId): ChartSpec | null {
+  const preset = presetForTemplate(id);
+  if (!preset) return null;
+  const saved = {
+    template: els.template.value,
+    csv: els.csv.value,
+    valueMode: els.valueMode.value,
+    title: els.title.value,
+    subtitle: els.subtitle.value,
+    highlight: els.highlight.value,
+    bnValue: els.bnValue.value,
+    bnDecimals: els.bnDecimals.value,
+    bnSuffix: els.bnSuffix.value,
+  };
+  els.template.value = id;
+  els.csv.value = preset.csv ? preset.csv.trim() : '';
+  els.valueMode.value = preset.valueMode;
+  els.title.value = '';
+  els.subtitle.value = '';
+  els.highlight.value = '';
+  // A Big Number thumbnail has no CSV to read, so seed it from the preset's first variant.
+  if (preset.variants?.length) {
+    const v = preset.variants[0];
+    els.bnValue.value = String(v.value);
+    els.bnDecimals.value = String(v.decimals);
+    els.bnSuffix.value = v.suffix;
+  }
+  const ok = refreshData();
+  const spec = ok ? currentSpec() : null;
+
+  els.template.value = saved.template;
+  els.csv.value = saved.csv;
+  els.valueMode.value = saved.valueMode;
+  els.title.value = saved.title;
+  els.subtitle.value = saved.subtitle;
+  els.bnValue.value = saved.bnValue;
+  els.bnDecimals.value = saved.bnDecimals;
+  els.bnSuffix.value = saved.bnSuffix;
+  refreshData();
+  els.highlight.value = saved.highlight;
+  return spec;
+}
+
+function renderGallery(): void {
+  if (els.gallery.hidden) return;
+  for (const c of thumbCharts.splice(0)) c.dispose();
+  els.galleryBody.innerHTML = '';
+
+  // Titles, tick labels and read-outs are dropped so a thumbnail reads as a silhouette.
+  const thumbComposition: Composition = {
+    background: { mode: 'solid', imageId: null, fit: 'cover' },
+    show: { ...CHART_ONLY, axisLabels: false, valueLabels: false, legend: false },
+  };
+
+  // Build the cards first; the thumbnails need real layout widths to scale against,
+  // which only exist once the cards are in the document.
+  const pending: Array<{ id: TemplateId; thumb: HTMLElement }> = [];
+
+  for (const group of TEMPLATE_GROUPS) {
+    const ids = templatesInGroup(group);
+    if (ids.length === 0) continue;
+
+    const section = document.createElement('div');
+    section.className = 'gallery-group';
+    const heading = document.createElement('h3');
+    heading.textContent = group;
+    const grid = document.createElement('div');
+    grid.className = 'gallery-grid';
+    section.append(heading, grid);
+
+    for (const id of ids) {
+      const meta = TEMPLATE_META[id];
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `gallery-card${id === template() ? ' active' : ''}`;
+      const thumb = document.createElement('div');
+      thumb.className = 'gallery-thumb';
+      const name = document.createElement('strong');
+      name.textContent = meta.label;
+      const desc = document.createElement('span');
+      desc.textContent = meta.description;
+      card.append(thumb, name, desc);
+      card.addEventListener('click', () => selectFromGallery(id));
+      grid.append(card);
+      pending.push({ id, thumb });
+    }
+    els.galleryBody.append(section);
+  }
+
+  for (const { id, thumb } of pending) {
+    const spec = thumbSpec(id);
+    if (!spec) continue;
+    // Rendered at a readable size, then scaled down as a whole so the miniature keeps
+    // its proportions instead of being cropped to the corner.
+    const inner = document.createElement('div');
+    inner.className = 'gallery-thumb-inner';
+    inner.style.width = `${THUMB.width}px`;
+    inner.style.height = `${THUMB.height}px`;
+    inner.style.transform = `scale(${(thumb.clientWidth || THUMB.width) / THUMB.width})`;
+    thumb.append(inner);
+
+    const instance = echarts.init(inner, undefined, {
+      renderer: 'canvas',
+      width: THUMB.width,
+      height: THUMB.height,
+    });
+    instance.setOption(buildOption(spec, 1, THUMB, thumbComposition), { notMerge: true, lazyUpdate: false });
+    thumbCharts.push(instance);
+  }
+}
+
+function openGallery(): void {
+  els.gallery.hidden = false;
+  renderGallery();
+}
+
+function closeGallery(): void {
+  els.gallery.hidden = true;
+  for (const c of thumbCharts.splice(0)) c.dispose();
+}
+
+/** Selecting from the gallery opens the existing editor on that template's example. */
+function selectFromGallery(id: TemplateId): void {
+  closeGallery();
+  const preset = presetForTemplate(id);
+  if (preset) {
+    els.preset.value = preset.id;
+    loadPreset(preset.id);
+  } else {
+    els.template.value = id;
+    onTemplateChange();
+  }
 }
 
 /* ---------- wiring ---------- */
 
 els.template.addEventListener('change', onTemplateChange);
+els.openGallery.addEventListener('click', openGallery);
+els.closeGallery.addEventListener('click', closeGallery);
+els.gallery.addEventListener('click', (e) => {
+  if (e.target === els.gallery) closeGallery();
+});
 els.preset.addEventListener('change', () => loadPreset(els.preset.value));
 els.variant.addEventListener('change', () => {
   const preset = getPreset(els.preset.value);
@@ -607,7 +933,6 @@ els.bgUploadInput.addEventListener('change', async () => {
   els.bgStatus.className = 'status';
   els.bgStatus.textContent = `Uploading ${file.name}...`;
   try {
-    // The backend validates the bytes and names the file; the browser never chooses a path.
     const res = await fetch('/api/backgrounds', {
       method: 'POST',
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
@@ -627,13 +952,27 @@ els.bgUploadInput.addEventListener('change', async () => {
 });
 
 for (const el of [els.title, els.subtitle, els.csv] as HTMLElement[]) el.addEventListener('input', refreshAll);
-for (const el of [els.valueMode, els.highlight, els.orientation] as HTMLElement[]) {
+for (const el of [els.valueMode, els.highlight, els.orientation, els.stackMode, els.heatReveal] as HTMLElement[]) {
   el.addEventListener('change', refreshAll);
 }
-for (const el of [els.bnValue, els.bnDecimals, els.bnPrefix, els.bnSuffix] as HTMLElement[]) {
+for (const el of [
+  els.bnValue,
+  els.bnDecimals,
+  els.bnPrefix,
+  els.bnSuffix,
+  els.innerRadius,
+  els.donutDisplay,
+  els.centerLabel,
+  els.areaOpacity,
+  els.xTitle,
+  els.yTitle,
+  els.symbolSize,
+] as HTMLElement[]) {
   el.addEventListener('input', refreshAll);
 }
-els.bnSeparators.addEventListener('change', refreshAll);
+for (const el of [els.bnSeparators, els.showTotal, els.showPoints] as HTMLElement[]) {
+  el.addEventListener('change', refreshAll);
+}
 for (const el of [els.cBackground, els.cPrimary, els.cAccent, els.cText] as HTMLElement[]) {
   el.addEventListener('input', () => draw(1));
 }
@@ -645,5 +984,6 @@ els.bgFit.value = DEFAULT_COMPOSITION.background.fit;
 applyTheme('dark-minimal');
 renderVisibilityToggles();
 loadPreset(PRESETS[0].id);
+els.csv.dataset.schema = TEMPLATE_META[template()].schema;
 fitPreview();
 draw(1);

@@ -1,10 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { buildOption, TEMPLATE_IDS } from '../src/templates/index.js';
+import { buildOption, TEMPLATE_IDS, TEMPLATE_META } from '../src/templates/index.js';
 import { getLayout, wrapText, fitCategoryLabels, LANDSCAPE, PORTRAIT, RESOLUTIONS } from '../src/shared/layout.js';
 import { THEMES, type ChartSpec, type ThemeId, type Theme } from '../src/shared/types.js';
 import { parseCsv } from '../src/shared/csv.js';
+import { parseHeatmapCsv, parseScatterCsv, parseSeriesCsv } from '../src/shared/schemas.js';
 import { COMEBACK_CURVE_CSV } from '../src/presets/comebackCurve.js';
 import { SCALING_COMPARISON_CSV } from '../src/presets/scalingComparison.js';
+import {
+  DONUT_EXAMPLE_CSV,
+  HEATMAP_EXAMPLE_CSV,
+  SCATTER_EXAMPLE_CSV,
+  STACKED_EXAMPLE_CSV,
+} from '../src/presets/examples.js';
 
 function data(csv: string) {
   const parsed = parseCsv(csv, 'percent');
@@ -12,13 +19,79 @@ function data(csv: string) {
   return parsed.data;
 }
 
-/** One spec per template, so cross-cutting rules can be asserted for all four. */
+function seriesTable(csv: string) {
+  const parsed = parseSeriesCsv(csv, 'number');
+  if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
+  return parsed.table;
+}
+function scatterPoints(csv: string) {
+  const parsed = parseScatterCsv(csv);
+  if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
+  return parsed.table.points;
+}
+function heatTable(csv: string) {
+  const parsed = parseHeatmapCsv(csv, 'percent');
+  if (!parsed.ok) throw new Error(parsed.errors.join('\n'));
+  return parsed.table;
+}
+
+/** One spec per template, so cross-cutting rules can be asserted for all nine. */
 function allSpecs(theme: Theme): ChartSpec[] {
   const base = { title: 'Comeback Rate by Gold Deficit', subtitle: 'A subtitle.', theme } as const;
+  const stack = seriesTable(STACKED_EXAMPLE_CSV);
+  const heat = heatTable(HEATMAP_EXAMPLE_CSV);
   return [
     { ...base, template: 'animated-bar', valueMode: 'percent', data: data(COMEBACK_CURVE_CSV), highlight: '6000+' },
     { ...base, template: 'animated-line', valueMode: 'percent', data: data(COMEBACK_CURVE_CSV), highlight: null },
     { ...base, template: 'comparison', valueMode: 'percent', data: data(SCALING_COMPARISON_CSV), highlight: null },
+    {
+      ...base,
+      template: 'donut',
+      valueMode: 'percent',
+      data: data(DONUT_EXAMPLE_CSV),
+      highlight: null,
+      innerRadius: 58,
+      display: 'percent',
+      showTotal: false,
+      centerLabel: '',
+    },
+    {
+      ...base,
+      template: 'stacked-bar',
+      valueMode: 'number',
+      categories: stack.categories,
+      series: stack.series,
+      stackMode: 'regular',
+      highlight: null,
+    },
+    {
+      ...base,
+      template: 'area',
+      valueMode: 'percent',
+      data: data(COMEBACK_CURVE_CSV),
+      highlight: null,
+      areaOpacity: 0.28,
+      showPoints: true,
+    },
+    {
+      ...base,
+      template: 'scatter',
+      valueMode: 'number',
+      points: scatterPoints(SCATTER_EXAMPLE_CSV),
+      xTitle: 'X',
+      yTitle: 'Y',
+      symbolSize: 34,
+      highlight: null,
+    },
+    {
+      ...base,
+      template: 'heatmap',
+      valueMode: 'percent',
+      xCategories: heat.xCategories,
+      yCategories: heat.yCategories,
+      cells: heat.cells,
+      highlight: null,
+    },
     {
       ...base,
       template: 'big-number',
@@ -100,7 +173,8 @@ describe('theme consistency', () => {
   it('routes the gridline color into the value axis of the plotted templates', () => {
     for (const id of themeIds) {
       const theme = THEMES[id];
-      for (const spec of allSpecs(theme).filter((s) => s.template !== 'big-number')) {
+      const plotted = allSpecs(theme).filter((s) => TEMPLATE_META[s.template].visibility.gridlines);
+      for (const spec of plotted) {
         const option = buildOption(spec, 1) as unknown as {
           xAxis: { splitLine?: { lineStyle?: { color?: string } } };
           yAxis: { splitLine?: { lineStyle?: { color?: string } } };

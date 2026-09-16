@@ -58,7 +58,16 @@ export const THEME_LABELS: Record<ThemeId, string> = {
 /** The default theme. */
 export const DARK_MINIMAL: Theme = THEMES['dark-minimal'];
 
-export type TemplateId = 'animated-bar' | 'animated-line' | 'comparison' | 'big-number';
+export type TemplateId =
+  | 'animated-bar'
+  | 'animated-line'
+  | 'comparison'
+  | 'big-number'
+  | 'donut'
+  | 'stacked-bar'
+  | 'area'
+  | 'scatter'
+  | 'heatmap';
 
 /** Bar direction. Vertical is the default and matches the original composition. */
 export type Orientation = 'vertical' | 'horizontal';
@@ -111,11 +120,85 @@ export interface BigNumberSpec extends SpecBase {
   separators: boolean;
 }
 
-/** Everything a template needs to draw a frame. Templates never hardcode a dataset. */
-export type ChartSpec = BarSpec | LineSpec | ComparisonSpec | BigNumberSpec;
+/** Whether a donut shows its raw values or the proportions derived from them. */
+export type DonutDisplay = 'percent' | 'value';
 
-/** Specs that carry a category/value dataset. */
-export type DataChartSpec = BarSpec | LineSpec | ComparisonSpec;
+export interface DonutSpec extends SpecBase {
+  template: 'donut';
+  /** Parts of one whole, in source order. */
+  data: DataPoint[];
+  highlight: string | null;
+  /** Inner radius as a percentage of the outer radius, 0-90. */
+  innerRadius: number;
+  display: DonutDisplay;
+  /** Shows the animated total in the middle of the ring. */
+  showTotal: boolean;
+  /** Caption under the centre read-out, or under nothing when the total is hidden. */
+  centerLabel: string;
+}
+
+/** Raw stacked values, or each category normalized to 100%. */
+export type StackMode = 'regular' | 'percent';
+
+export interface StackedBarSpec extends SpecBase {
+  template: 'stacked-bar';
+  categories: string[];
+  /** Series in source order; colors follow this order so a series keeps its color. */
+  series: Array<{ name: string; values: number[] }>;
+  stackMode: StackMode;
+  orientation?: Orientation;
+  reveal?: Reveal;
+  /** A category name or a series name; either can be emphasized. */
+  highlight: string | null;
+}
+
+export interface AreaSpec extends SpecBase {
+  template: 'area';
+  data: DataPoint[];
+  highlight: string | null;
+  /** Fill opacity under the line, 0-1. */
+  areaOpacity: number;
+  showPoints: boolean;
+}
+
+export interface ScatterSpec extends SpecBase {
+  template: 'scatter';
+  points: Array<{ x: number; y: number; label: string }>;
+  xTitle: string;
+  yTitle: string;
+  symbolSize: number;
+  reveal?: Reveal;
+  /** Matched against a point's label. */
+  highlight: string | null;
+}
+
+/** Cells appear all at once, or one row of the Y axis at a time. */
+export type HeatmapReveal = 'simultaneous' | 'row';
+
+export interface HeatmapSpec extends SpecBase {
+  template: 'heatmap';
+  xCategories: string[];
+  yCategories: string[];
+  cells: Array<{ x: string; y: string; value: number }>;
+  heatReveal?: HeatmapReveal;
+  /** Emphasized cell, as its x and y joined by the cell-key separator, or null. */
+  highlight: string | null;
+}
+
+/** Everything a template needs to draw a frame. Templates never hardcode a dataset. */
+export type ChartSpec =
+  | BarSpec
+  | LineSpec
+  | ComparisonSpec
+  | BigNumberSpec
+  | DonutSpec
+  | StackedBarSpec
+  | AreaSpec
+  | ScatterSpec
+  | HeatmapSpec;
+
+/** Specs that carry a simple category/value dataset. */
+export type DataChartSpec = BarSpec | LineSpec | ComparisonSpec | DonutSpec | AreaSpec;
 
 export type Easing = 'linear' | 'ease-out';
 

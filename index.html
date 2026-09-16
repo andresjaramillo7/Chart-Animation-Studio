@@ -17,6 +17,7 @@
       <section>
         <h2>Chart</h2>
         <label>Chart type <select id="template"></select></label>
+        <button id="openGallery" class="secondary" type="button">Browse template gallery…</button>
         <label>Preset <select id="preset"></select></label>
         <label data-field="variant">Big Number variant <select id="variant"></select></label>
         <label>Title <input id="title" type="text" /></label>
@@ -28,6 +29,7 @@
             <option value="number">Number</option>
           </select>
         </label>
+        <div data-field="csv" class="schema-hint">Expected columns: <code id="schemaHint"></code></div>
         <label data-field="csv">CSV data <textarea id="csv" rows="9" spellcheck="false"></textarea></label>
         <div class="row" data-field="csv">
           <button id="uploadBtn" class="secondary" type="button">Upload CSV…</button>
@@ -51,6 +53,44 @@
             <option value="horizontal">Horizontal</option>
           </select>
         </label>
+
+        <label data-field="stack">Stacking
+          <select id="stackMode">
+            <option value="regular">Regular — raw values</option>
+            <option value="percent">100% stacked — normalized</option>
+          </select>
+        </label>
+
+        <div class="bignum" data-field="donut">
+          <label>Inner radius %<input id="innerRadius" type="number" min="0" max="90" step="1" /></label>
+          <label>Segment labels
+            <select id="donutDisplay">
+              <option value="percent">Share of total</option>
+              <option value="value">Source value</option>
+            </select>
+          </label>
+        </div>
+        <label class="inline" data-field="donut"><input id="showTotal" type="checkbox" /> Show total in the centre</label>
+        <label data-field="donut">Centre caption <input id="centerLabel" type="text" /></label>
+
+        <div class="bignum" data-field="areaOpts">
+          <label>Area opacity <input id="areaOpacity" type="number" min="0" max="1" step="0.02" /></label>
+          <label class="inline"><input id="showPoints" type="checkbox" /> Show points</label>
+        </div>
+
+        <div class="bignum" data-field="scatterOpts">
+          <label>X axis title <input id="xTitle" type="text" /></label>
+          <label>Y axis title <input id="yTitle" type="text" /></label>
+          <label>Symbol size <input id="symbolSize" type="number" min="4" max="200" step="1" /></label>
+        </div>
+
+        <label data-field="heatOpts">Cell reveal
+          <select id="heatReveal">
+            <option value="simultaneous">Simultaneous</option>
+            <option value="row">Row by row</option>
+          </select>
+        </label>
+
         <div id="dataStatus" class="status"></div>
       </section>
 
@@ -131,6 +171,16 @@
       </div>
     </div>
   </main>
+
+  <div id="gallery" class="gallery-overlay" hidden>
+    <div class="gallery">
+      <div class="gallery-head">
+        <h2>Template gallery</h2>
+        <button id="closeGallery" class="secondary" type="button">Close</button>
+      </div>
+      <div id="galleryBody" class="gallery-body"></div>
+    </div>
+  </div>
 
   <script type="module" src="/src/ui/main.ts"></script>
 </body>

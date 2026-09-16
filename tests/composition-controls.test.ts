@@ -186,7 +186,7 @@ describe('Chart Only preset', () => {
 
 describe('per-template control support', () => {
   it('offers axis and value-label controls only for the plotted templates', () => {
-    for (const id of ['animated-bar', 'animated-line', 'comparison'] as const) {
+    for (const id of ['animated-bar', 'animated-line', 'comparison', 'area', 'scatter'] as const) {
       expect(supportedVisibility(id)).toEqual(['title', 'subtitle', 'axisLabels', 'axes', 'gridlines', 'valueLabels']);
     }
   });
@@ -195,10 +195,32 @@ describe('per-template control support', () => {
     expect(supportedVisibility('big-number')).toEqual(['title', 'subtitle']);
   });
 
-  it('declares no legend, because no current template draws one', () => {
+  it('offers a legend only for the templates that draw one', () => {
+    const withLegend = TEMPLATE_IDS.filter((id) => TEMPLATE_META[id].visibility.legend);
+    expect([...withLegend].sort()).toEqual(['donut', 'heatmap', 'stacked-bar']);
     for (const id of TEMPLATE_IDS) {
-      expect(TEMPLATE_META[id].visibility.legend, id).toBe(false);
-      expect(supportedVisibility(id)).not.toContain('legend');
+      const declared = TEMPLATE_META[id].visibility.legend;
+      expect(supportedVisibility(id).includes('legend'), id).toBe(declared);
     }
+  });
+
+  it('gives the donut segment labels and a legend but no axes', () => {
+    expect(supportedVisibility('donut')).toEqual(['title', 'subtitle', 'legend', 'valueLabels']);
+  });
+
+  it('gives the heatmap axes, a colour scale and cell labels but no gridlines', () => {
+    expect(supportedVisibility('heatmap')).toEqual(['title', 'subtitle', 'axisLabels', 'axes', 'legend', 'valueLabels']);
+  });
+
+  it('gives the stacked bar every plotted control plus a legend', () => {
+    expect(supportedVisibility('stacked-bar')).toEqual([
+      'title',
+      'subtitle',
+      'axisLabels',
+      'axes',
+      'gridlines',
+      'legend',
+      'valueLabels',
+    ]);
   });
 });

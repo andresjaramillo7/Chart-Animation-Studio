@@ -38,6 +38,14 @@ export function lineState(values: number[], progress: number): LineState {
   return { head, lastFullIndex, segmentFraction, headValue };
 }
 
+/** Extras that turn the line engine into an area chart. */
+export interface LineFamilyOptions {
+  /** Fill opacity under the line. Omit for a plain line. */
+  areaOpacity?: number;
+  /** Draw a marker on each revealed point. Defaults to true. */
+  showPoints?: boolean;
+}
+
 /**
  * Animated Line — the line is progressively drawn from the first category to the last.
  *
@@ -50,6 +58,23 @@ export function buildAnimatedLineOption(
   progress: number,
   canvas: Canvas = LANDSCAPE,
   composition: Composition = DEFAULT_COMPOSITION,
+): EChartsOption {
+  return buildLineFamilyOption(spec, progress, canvas, composition, {});
+}
+
+/**
+ * The one line-drawing engine, shared by Animated Line and Area.
+ *
+ * The area is an `areaStyle` on the very same series, so the fill is bounded by the
+ * same polyline the line draws — including the interpolated head point. A partially
+ * drawn line can therefore never sit on top of a completed fill.
+ */
+export function buildLineFamilyOption(
+  spec: LineSpec,
+  progress: number,
+  canvas: Canvas = LANDSCAPE,
+  composition: Composition = DEFAULT_COMPOSITION,
+  extras: LineFamilyOptions = {},
 ): EChartsOption {
   const { theme } = spec;
   const show = composition.show;
@@ -75,12 +100,15 @@ export function buildAnimatedLineOption(
   // would punch an opaque hole in a transparent or image-backed composition.
   const opaqueBackdrop = composition.background.mode === 'solid';
 
+  const showPoints = extras.showPoints ?? true;
+
   const points: Point[] = [];
   for (let i = 0; i <= state.lastFullIndex; i++) {
     const highlighted = spec.highlight !== null && categories[i] === spec.highlight;
+    const size = highlighted ? Math.round(layout.symbolSize * 1.5) : layout.symbolSize;
     points.push({
       value: [i, values[i]],
-      symbolSize: highlighted ? Math.round(layout.symbolSize * 1.5) : layout.symbolSize,
+      symbolSize: showPoints ? size : 0,
       itemStyle: {
         color: highlighted ? theme.accent : theme.primary,
         borderColor: opaqueBackdrop ? theme.background : 'transparent',
@@ -147,6 +175,16 @@ export function buildAnimatedLineOption(
         clip: false,
         lineStyle: { color: theme.primary, width: layout.lineWidth, cap: 'round', join: 'round' },
         itemStyle: { color: theme.primary },
+        ...(extras.areaOpacity !== undefined
+          ? {
+              areaStyle: {
+                color: theme.primary,
+                opacity: Math.max(0, Math.min(1, extras.areaOpacity)),
+                // The fill is clipped to the drawn polyline, never to the full dataset.
+                origin: 'start',
+              },
+            }
+          : {}),
         emphasis: { disabled: true },
         label: {
           show: show.valueLabels,

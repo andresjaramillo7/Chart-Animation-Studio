@@ -8,9 +8,11 @@ import {
   type Easing,
   type ExportFormat,
   type ExportRequest,
+  type DataPoint,
   type ValueMode,
   type VisibilitySpec,
 } from '../src/shared/types.js';
+import { cellKey, validateDonutData, validatePercentStack } from '../src/shared/schemas.js';
 import { RESOLUTIONS } from '../src/shared/layout.js';
 import { TEMPLATE_META, isTemplateId } from '../src/templates/index.js';
 import { isUploadId } from './paths.js';
@@ -120,22 +122,187 @@ function validateChart(chart: ChartSpec | undefined, errors: string[]): void {
     }
   }
 
+  // Each template declares the CSV shape it expects, so the payload is checked against
+  // that shape rather than being forced through one schema.
   const meta = TEMPLATE_META[chart.template];
-  if (meta.needsData) {
-    validateDataset(chart as DataChartSpec, mode, meta, errors);
-  } else {
-    validateBigNumber(chart, errors);
+  switch (meta.schema) {
+    case 'category-value':
+      validateDataset(chart as DataChartSpec, mode, meta, errors);
+      if (chart.template === 'donut') validateDonut(chart, mode, errors);
+      if (chart.template === 'area') validateArea(chart, errors);
+      break;
+    case 'category-series':
+      validateSeriesTable(chart as unknown as Record<string, unknown>, mode, errors);
+      break;
+    case 'xy-label':
+      validateScatter(chart as unknown as Record<string, unknown>, errors);
+      break;
+    case 'xy-value':
+      validateHeatmap(chart as unknown as Record<string, unknown>, mode, errors);
+      break;
+    case 'none':
+      validateBigNumber(chart, errors);
+      break;
   }
 
-  if (chart.template === 'animated-bar' && chart.orientation != null) {
+  if ((chart.template === 'animated-bar' || chart.template === 'stacked-bar') && chart.orientation != null) {
     if (chart.orientation !== 'vertical' && chart.orientation !== 'horizontal') {
       errors.push('"chart.orientation" must be "vertical" or "horizontal".');
     }
   }
-  if ((chart.template === 'animated-bar' || chart.template === 'comparison') && chart.reveal != null) {
+  if (
+    (chart.template === 'animated-bar' ||
+      chart.template === 'comparison' ||
+      chart.template === 'stacked-bar' ||
+      chart.template === 'scatter') &&
+    chart.reveal != null
+  ) {
     if (chart.reveal !== 'simultaneous' && chart.reveal !== 'sequential') {
       errors.push('"chart.reveal" must be "simultaneous" or "sequential".');
     }
+  }
+}
+
+/** A donut shows parts of one whole, so its parts have to add up. */
+function validateDonut(chart: ChartSpec, mode: ValueMode, errors: string[]): void {
+  const d = chart as {
+    data?: unknown;
+    innerRadius?: unknown;
+    display?: unknown;
+    showTotal?: unknown;
+    centerLabel?: unknown;
+  };
+  if (typeof d.innerRadius !== 'number' || d.innerRadius < 0 || d.innerRadius > 90) {
+    errors.push('"chart.innerRadius" must be between 0 and 90.');
+  }
+  if (d.display !== 'percent' && d.display !== 'value') errors.push('"chart.display" must be "percent" or "value".');
+  if (typeof d.showTotal !== 'boolean') errors.push('"chart.showTotal" must be true or false.');
+  if (typeof d.centerLabel !== 'string') errors.push('"chart.centerLabel" must be a string.');
+
+  const rows = d.data;
+  if (Array.isArray(rows) && rows.every((r) => typeof r?.value === 'number' && Number.isFinite(r.value))) {
+    errors.push(...validateDonutData(rows as DataPoint[], mode));
+  }
+}
+
+function validateArea(chart: ChartSpec, errors: string[]): void {
+  const a = chart as { areaOpacity?: unknown; showPoints?: unknown };
+  if (typeof a.areaOpacity !== 'number' || a.areaOpacity < 0 || a.areaOpacity > 1) {
+    errors.push('"chart.areaOpacity" must be between 0 and 1.');
+  }
+  if (typeof a.showPoints !== 'boolean') errors.push('"chart.showPoints" must be true or false.');
+}
+
+function validateSeriesTable(chart: Record<string, unknown>, mode: ValueMode, errors: string[]): void {
+  const categories = chart.categories;
+  const series = chart.series;
+  if (!Array.isArray(categories) || categories.length === 0) {
+    errors.push('"chart.categories" must contain at least one category.');
+    return;
+  }
+  if (categories.some((c) => typeof c !== 'string' || !c.trim())) {
+    errors.push('Every category must be a non-empty string.');
+  }
+  if (new Set(categories).size !== categories.length) errors.push('Categories must be unique.');
+
+  if (!Array.isArray(series) || series.length < 2) {
+    errors.push('A stacked bar needs at least two series.');
+    return;
+  }
+  series.forEach((s, i) => {
+    const entry = s as { name?: unknown; values?: unknown };
+    if (typeof entry.name !== 'string' || !entry.name.trim()) errors.push(`Series ${i + 1}: missing name.`);
+    if (!Array.isArray(entry.values) || entry.values.length !== categories.length) {
+      errors.push(`Series ${i + 1}: expected ${categories.length} values.`);
+      return;
+    }
+    entry.values.forEach((v, c) => {
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        errors.push(`Series ${i + 1}, category ${c + 1}: value must be a finite number.`);
+      } else if (v < 0) {
+        errors.push(`Series ${i + 1}, category ${c + 1}: stacked bars require non-negative values.`);
+      } else if (mode === 'percent' && v > 100) {
+        errors.push(`Series ${i + 1}, category ${c + 1}: percentage ${v} is outside 0-100.`);
+      }
+    });
+  });
+
+  const stackMode = chart.stackMode;
+  if (stackMode !== 'regular' && stackMode !== 'percent') {
+    errors.push('"chart.stackMode" must be "regular" or "percent".');
+    return;
+  }
+  // A category of all zeros has no 100% composition and would divide by zero.
+  if (stackMode === 'percent' && errors.length === 0) {
+    errors.push(
+      ...validatePercentStack({
+        categories: categories as string[],
+        series: series as Array<{ name: string; values: number[] }>,
+        decimals: 0,
+      }),
+    );
+  }
+}
+
+function validateScatter(chart: Record<string, unknown>, errors: string[]): void {
+  const points = chart.points;
+  if (!Array.isArray(points) || points.length === 0) {
+    errors.push('"chart.points" must contain at least one point.');
+    return;
+  }
+  // Duplicate coordinates are deliberately allowed; two observations may share a spot.
+  points.forEach((p, i) => {
+    const point = p as { x?: unknown; y?: unknown; label?: unknown };
+    if (typeof point.x !== 'number' || !Number.isFinite(point.x)) {
+      errors.push(`Point ${i + 1}: x must be a finite number.`);
+    }
+    if (typeof point.y !== 'number' || !Number.isFinite(point.y)) {
+      errors.push(`Point ${i + 1}: y must be a finite number.`);
+    }
+    if (typeof point.label !== 'string') errors.push(`Point ${i + 1}: label must be a string.`);
+  });
+  for (const key of ['xTitle', 'yTitle'] as const) {
+    if (typeof chart[key] !== 'string') errors.push(`"chart.${key}" must be a string.`);
+  }
+  const size = chart.symbolSize;
+  if (typeof size !== 'number' || size < 4 || size > 200) errors.push('"chart.symbolSize" must be between 4 and 200.');
+}
+
+function validateHeatmap(chart: Record<string, unknown>, mode: ValueMode, errors: string[]): void {
+  const xs = chart.xCategories;
+  const ys = chart.yCategories;
+  const cells = chart.cells;
+  if (!Array.isArray(xs) || xs.length === 0 || !Array.isArray(ys) || ys.length === 0) {
+    errors.push('"chart.xCategories" and "chart.yCategories" must each contain at least one category.');
+    return;
+  }
+  if (!Array.isArray(cells) || cells.length === 0) {
+    errors.push('"chart.cells" must contain at least one cell.');
+    return;
+  }
+  const seen = new Set<string>();
+  cells.forEach((c, i) => {
+    const cell = c as { x?: unknown; y?: unknown; value?: unknown };
+    if (typeof cell.x !== 'string' || !xs.includes(cell.x)) {
+      errors.push(`Cell ${i + 1}: x is not one of the declared X categories.`);
+    }
+    if (typeof cell.y !== 'string' || !ys.includes(cell.y)) {
+      errors.push(`Cell ${i + 1}: y is not one of the declared Y categories.`);
+    }
+    if (typeof cell.value !== 'number' || !Number.isFinite(cell.value)) {
+      errors.push(`Cell ${i + 1}: value must be a finite number.`);
+    } else if (mode === 'percent' && (cell.value < 0 || cell.value > 100)) {
+      errors.push(`Cell ${i + 1}: percentage ${cell.value} is outside 0-100.`);
+    }
+    if (typeof cell.x === 'string' && typeof cell.y === 'string') {
+      const key = cellKey(cell.x, cell.y);
+      if (seen.has(key)) errors.push(`Cell ${i + 1}: duplicate cell "${cell.x}" / "${cell.y}".`);
+      seen.add(key);
+    }
+  });
+  const reveal = chart.heatReveal;
+  if (reveal != null && reveal !== 'simultaneous' && reveal !== 'row') {
+    errors.push('"chart.heatReveal" must be "simultaneous" or "row".');
   }
 }
 

@@ -1,7 +1,22 @@
-import type { Orientation, Reveal, TemplateId, ValueMode } from '../shared/types.js';
+import type {
+  DonutDisplay,
+  HeatmapReveal,
+  Orientation,
+  Reveal,
+  StackMode,
+  TemplateId,
+  ValueMode,
+} from '../shared/types.js';
 import { COMEBACK_CURVE_CSV } from './comebackCurve.js';
 import { SCALING_COMPARISON_CSV, SCALING_COMPARISON_0_3K_CSV } from './scalingComparison.js';
 import { BIG_NUMBER_VARIANTS, type BigNumberVariant } from './bigNumbers.js';
+import {
+  DONUT_EXAMPLE_CSV,
+  HEATMAP_EXAMPLE_CSV,
+  ILLUSTRATIVE,
+  SCATTER_EXAMPLE_CSV,
+  STACKED_EXAMPLE_CSV,
+} from './examples.js';
 
 /**
  * Presets carry data and copy only. Templates stay completely generic — nothing here
@@ -22,6 +37,18 @@ export interface Preset {
   reveal?: Reveal;
   /** Individually selectable Big Number variants. */
   variants?: BigNumberVariant[];
+  /* Template-specific options a preset may set. */
+  innerRadius?: number;
+  donutDisplay?: DonutDisplay;
+  showTotal?: boolean;
+  centerLabel?: string;
+  stackMode?: StackMode;
+  areaOpacity?: number;
+  showPoints?: boolean;
+  xTitle?: string;
+  yTitle?: string;
+  symbolSize?: number;
+  heatReveal?: HeatmapReveal;
 }
 
 export const PRESETS: Preset[] = [
@@ -37,6 +64,30 @@ export const PRESETS: Preset[] = [
     orientation: 'vertical',
     reveal: 'simultaneous',
     filename: 'comeback-curve',
+  },
+  {
+    id: 'comeback-curve-line',
+    name: 'Comeback Curve — Line',
+    template: 'animated-line',
+    title: 'Comeback Rate by Gold Deficit',
+    subtitle: 'Observed comeback rates among games continuing past 20 minutes.',
+    valueMode: 'percent',
+    csv: COMEBACK_CURVE_CSV,
+    highlight: '6000+',
+    filename: 'comeback-curve-line',
+  },
+  {
+    id: 'comeback-curve-area',
+    name: 'Comeback Curve — Area',
+    template: 'area',
+    title: 'Comeback Rate by Gold Deficit',
+    subtitle: 'Observed comeback rates among games continuing past 20 minutes.',
+    valueMode: 'percent',
+    csv: COMEBACK_CURVE_CSV,
+    highlight: '6000+',
+    areaOpacity: 0.28,
+    showPoints: true,
+    filename: 'comeback-curve-area',
   },
   {
     id: 'scaling-comparison',
@@ -72,11 +123,82 @@ export const PRESETS: Preset[] = [
     variants: BIG_NUMBER_VARIANTS,
     filename: 'big-number',
   },
+  {
+    id: 'donut-example',
+    name: 'Donut — Example Split',
+    template: 'donut',
+    title: 'Example Share of Total',
+    subtitle: ILLUSTRATIVE,
+    valueMode: 'percent',
+    csv: DONUT_EXAMPLE_CSV,
+    highlight: null,
+    innerRadius: 58,
+    donutDisplay: 'percent',
+    showTotal: false,
+    centerLabel: '',
+    filename: 'donut-example',
+  },
+  {
+    id: 'stacked-example',
+    name: 'Stacked Bar — Example Groups',
+    template: 'stacked-bar',
+    title: 'Example Composition by Group',
+    subtitle: ILLUSTRATIVE,
+    valueMode: 'number',
+    csv: STACKED_EXAMPLE_CSV,
+    highlight: null,
+    orientation: 'vertical',
+    reveal: 'simultaneous',
+    stackMode: 'regular',
+    filename: 'stacked-example',
+  },
+  {
+    id: 'scatter-example',
+    name: 'Scatter — Example Pairs',
+    template: 'scatter',
+    title: 'Example Relationship',
+    subtitle: ILLUSTRATIVE,
+    valueMode: 'number',
+    csv: SCATTER_EXAMPLE_CSV,
+    highlight: null,
+    xTitle: 'X value',
+    yTitle: 'Y value',
+    symbolSize: 34,
+    reveal: 'sequential',
+    filename: 'scatter-example',
+  },
+  {
+    id: 'heatmap-example',
+    name: 'Heatmap — Example Grid',
+    template: 'heatmap',
+    title: 'Example Grid',
+    subtitle: ILLUSTRATIVE,
+    valueMode: 'percent',
+    csv: HEATMAP_EXAMPLE_CSV,
+    highlight: null,
+    heatReveal: 'row',
+    filename: 'heatmap-example',
+  },
 ];
 
 export function getPreset(id: string): Preset | undefined {
   return PRESETS.find((p) => p.id === id);
 }
 
-export { COMEBACK_CURVE_CSV, SCALING_COMPARISON_CSV, SCALING_COMPARISON_0_3K_CSV, BIG_NUMBER_VARIANTS };
+/** The first preset that uses a given template, used when the gallery selects one. */
+export function presetForTemplate(template: TemplateId): Preset | undefined {
+  return PRESETS.find((p) => p.template === template);
+}
+
+export {
+  COMEBACK_CURVE_CSV,
+  SCALING_COMPARISON_CSV,
+  SCALING_COMPARISON_0_3K_CSV,
+  BIG_NUMBER_VARIANTS,
+  DONUT_EXAMPLE_CSV,
+  STACKED_EXAMPLE_CSV,
+  SCATTER_EXAMPLE_CSV,
+  HEATMAP_EXAMPLE_CSV,
+  ILLUSTRATIVE,
+};
 export type { BigNumberVariant };

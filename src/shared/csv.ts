@@ -114,3 +114,65 @@ export function decimalsOf(values: number[]): number {
   }
   return Math.min(max, 6);
 }
+
+/* ---------------------------------------------------------------------------
+ * Low-level table parsing, shared by the template-specific schema parsers.
+ *
+ * `parseCsv` above stays the canonical "category,value" reader. Templates with a
+ * different shape build on `parseTable`, which does the generic work (BOM, quoting,
+ * blank lines) and leaves every column name and value untouched.
+ * ------------------------------------------------------------------------- */
+
+export interface TableSuccess {
+  ok: true;
+  /** Header names exactly as written, only trimmed. */
+  fields: string[];
+  rows: Array<Record<string, string>>;
+}
+export type TableResult = TableSuccess | ParseFailure;
+
+export function parseTable(input: string, expected: string): TableResult {
+  const text = (input ?? '').replace(/^﻿/, '').trim();
+  if (!text) return { ok: false, errors: [`CSV is empty. Paste data with a "${expected}" header row.`] };
+
+  const parsed = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    transformHeader: (h) => h.trim(),
+  });
+
+  const errors: string[] = [];
+  for (const err of parsed.errors) {
+    const line = typeof err.row === 'number' ? ` (line ${err.row + 2})` : '';
+    errors.push(`CSV syntax error${line}: ${err.message}`);
+  }
+  if (errors.length) return { ok: false, errors };
+
+  const fields = (parsed.meta.fields ?? []).map((f) => f.trim()).filter((f) => f !== '');
+  if (fields.length === 0) return { ok: false, errors: [`CSV has no header row. Expected "${expected}".`] };
+  if (parsed.data.length === 0) return { ok: false, errors: ['CSV contains a header row but no data rows.'] };
+
+  return { ok: true, fields, rows: parsed.data };
+}
+
+/** Find a column by name, ignoring case, so "X" and "x" both work. */
+export function columnKey(fields: string[], name: string): string | null {
+  return fields.find((f) => f.toLowerCase() === name.toLowerCase()) ?? null;
+}
+
+/**
+ * Strict numeric reader. Accepts a leading sign and a plain decimal; rejects anything
+ * Number() would quietly accept but a human would not ("1e5x", "0x10", "").
+ */
+export function readNumber(raw: string | undefined): number | null {
+  const s = (raw ?? '').trim();
+  if (!/^[+-]?(\d+(\.\d+)?|\.\d+)$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Decimal places written in a raw cell, so labels never invent or drop precision. */
+export function rawDecimals(raw: string): number {
+  const dot = raw.indexOf('.');
+  return dot >= 0 ? Math.min(6, raw.length - dot - 1) : 0;
+}
