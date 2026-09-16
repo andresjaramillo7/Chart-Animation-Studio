@@ -1,0 +1,12 @@
+node_modules/
+dist/
+
+# Temporary render frames and failed-export debugging artifacts
+.cache/
+
+# Generated videos are never committed
+outputs/*
+!outputs/.gitkeep
+
+*.log
+.DS_Store

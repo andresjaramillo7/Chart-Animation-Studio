@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chart Animation Studio</title>
+  <link rel="stylesheet" href="/src/ui/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Chart Animation Studio</h1>
+    <span class="badge" id="formatBadge">30 fps</span>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section>
+        <h2>Chart</h2>
+        <label>Chart type <select id="template"></select></label>
+        <label>Preset <select id="preset"></select></label>
+        <label data-field="variant">Big Number variant <select id="variant"></select></label>
+        <label>Title <input id="title" type="text" /></label>
+        <label>Subtitle <input id="subtitle" type="text" /></label>
+
+        <label data-field="valueMode">Data mode
+          <select id="valueMode">
+            <option value="percent">Percentage (0-100)</option>
+            <option value="number">Number</option>
+          </select>
+        </label>
+        <label data-field="csv">CSV data <textarea id="csv" rows="9" spellcheck="false"></textarea></label>
+        <div class="row" data-field="csv">
+          <button id="uploadBtn" class="secondary" type="button">Upload CSV…</button>
+          <input id="uploadInput" type="file" accept=".csv,text/csv,text/plain" hidden />
+        </div>
+        <label data-field="highlight">Highlighted category <select id="highlight"></select></label>
+
+        <div class="bignum" data-field="bigNumber">
+          <label>Value <input id="bnValue" type="number" step="any" /></label>
+          <label>Decimals <input id="bnDecimals" type="number" min="0" max="6" step="1" /></label>
+          <label>Prefix <input id="bnPrefix" type="text" maxlength="8" /></label>
+          <label>Suffix <input id="bnSuffix" type="text" maxlength="8" /></label>
+        </div>
+        <label class="inline" data-field="bigNumber">
+          <input id="bnSeparators" type="checkbox" /> Thousands separators
+        </label>
+
+        <label data-field="orientation">Orientation
+          <select id="orientation">
+            <option value="vertical">Vertical</option>
+            <option value="horizontal">Horizontal</option>
+          </select>
+        </label>
+        <div id="dataStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>Colors</h2>
+        <label>Theme <select id="theme"></select></label>
+        <div class="colors">
+          <label>Background <input id="cBackground" type="color" /></label>
+          <label>Primary <input id="cPrimary" type="color" /></label>
+          <label>Accent <input id="cAccent" type="color" /></label>
+          <label>Text <input id="cText" type="color" /></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Animation</h2>
+        <label>Duration (seconds) <input id="duration" type="number" min="0.1" max="60" step="0.1" value="3" /></label>
+        <label>Easing
+          <select id="easing">
+            <option value="ease-out">Ease out</option>
+            <option value="linear">Linear</option>
+          </select>
+        </label>
+        <label data-field="reveal">Reveal
+          <select id="reveal">
+            <option value="simultaneous">Simultaneous</option>
+            <option value="sequential">Sequential</option>
+          </select>
+        </label>
+        <label>Final-frame hold (seconds) <input id="hold" type="number" min="0" max="60" step="0.1" value="1" /></label>
+        <div id="timelineInfo" class="status"></div>
+      </section>
+
+      <section>
+        <h2>Export</h2>
+        <label>Resolution <select id="resolution"></select></label>
+        <label>Filename <input id="filename" type="text" /></label>
+        <button id="export" class="primary" type="button">Export MP4</button>
+        <div id="exportStatus" class="status"></div>
+        <div class="progress"><div id="progressBar"></div></div>
+      </section>
+    </aside>
+
+    <div class="stage-wrap">
+      <div class="stage-tools">
+        <button id="replay" class="secondary" type="button">Replay preview animation</button>
+        <span class="hint">Preview is the exact composition that will be exported.</span>
+      </div>
+      <div id="previewFrame" class="preview-frame">
+        <div id="preview" class="preview"></div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="/src/ui/main.ts"></script>
+</body>
+</html>
