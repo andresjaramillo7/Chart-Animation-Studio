@@ -1,5 +1,5 @@
 import type { EChartsOption } from 'echarts';
-import type { LineSpec } from '../shared/types.js';
+import { DEFAULT_COMPOSITION, type Composition, type LineSpec } from '../shared/types.js';
 import { clamp01 } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
@@ -49,13 +49,15 @@ export function buildAnimatedLineOption(
   spec: LineSpec,
   progress: number,
   canvas: Canvas = LANDSCAPE,
+  composition: Composition = DEFAULT_COMPOSITION,
 ): EChartsOption {
   const { theme } = spec;
+  const show = composition.show;
   const layout = getLayout(canvas);
   const decimals = decimalsOf(spec.data.map((d) => d.value));
   const suffix = valueSuffix(spec.valueMode);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
   const categories = spec.data.map((d) => d.category);
   const values = spec.data.map((d) => d.value);
   const n = values.length;
@@ -69,6 +71,10 @@ export function buildAnimatedLineOption(
     label?: Record<string, unknown>;
   };
 
+  // A ring in the background color separates a point from the line behind it, but it
+  // would punch an opaque hole in a transparent or image-backed composition.
+  const opaqueBackdrop = composition.background.mode === 'solid';
+
   const points: Point[] = [];
   for (let i = 0; i <= state.lastFullIndex; i++) {
     const highlighted = spec.highlight !== null && categories[i] === spec.highlight;
@@ -77,10 +83,10 @@ export function buildAnimatedLineOption(
       symbolSize: highlighted ? Math.round(layout.symbolSize * 1.5) : layout.symbolSize,
       itemStyle: {
         color: highlighted ? theme.accent : theme.primary,
-        borderColor: theme.background,
-        borderWidth: Math.round(layout.lineWidth * 0.5),
+        borderColor: opaqueBackdrop ? theme.background : 'transparent',
+        borderWidth: opaqueBackdrop ? Math.round(layout.lineWidth * 0.5) : 0,
       },
-      label: { show: true, color: highlighted ? theme.accent : theme.text },
+      label: { show: show.valueLabels, color: highlighted ? theme.accent : theme.text },
     });
   }
   // The drawing head itself carries no marker or read-out — only revealed points do.
@@ -102,7 +108,7 @@ export function buildAnimatedLineOption(
   const fit = fitCategoryLabels(categories, (plotWidth * 0.86) / Math.max(1, n), layout.axisLabelSize);
 
   return {
-    ...baseOption(theme),
+    ...baseOption(theme, composition),
     title: header.title,
     graphic: header.graphic,
     grid: {
@@ -117,10 +123,11 @@ export function buildAnimatedLineOption(
       min: 0,
       max: Math.max(1, n - 1),
       interval: 1,
-      axisLine: { lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
+      axisLine: { show: show.axes, lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
       axisTick: { show: false },
       splitLine: { show: false },
       axisLabel: {
+        show: show.axisLabels,
         color: withAlpha(theme.text, 0.62),
         fontSize: fit.fontSize,
         fontFamily: FONT_STACK,
@@ -129,7 +136,7 @@ export function buildAnimatedLineOption(
         formatter: (v: number) => categories[Math.round(v)] ?? '',
       },
     },
-    yAxis: valueAxis(spec.valueMode, layout, theme),
+    yAxis: valueAxis(spec.valueMode, layout, theme, show),
     series: [
       {
         type: 'line',
@@ -142,7 +149,7 @@ export function buildAnimatedLineOption(
         itemStyle: { color: theme.primary },
         emphasis: { disabled: true },
         label: {
-          show: true,
+          show: show.valueLabels,
           position: 'top',
           distance: Math.round(layout.valueLabelSize * 0.6),
           color: theme.text,

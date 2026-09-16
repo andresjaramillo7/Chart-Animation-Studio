@@ -6,6 +6,7 @@ import { PROJECT_ROOT, ensureDirs } from './paths.js';
 import { validateExportRequest } from './validate.js';
 import { startExport, getJob } from './exporter.js';
 import { resolveFfmpeg } from './ffmpeg.js';
+import { MAX_BACKGROUND_BYTES, readBackground, storeBackground } from './backgrounds.js';
 
 const PORT = Number(process.env.PORT ?? 5173);
 const HOST = '127.0.0.1';
@@ -14,7 +15,10 @@ async function main(): Promise<void> {
   ensureDirs();
 
   const app = express();
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '4mb' }));
+  // Background uploads arrive as raw image bytes; the type is checked from the magic
+  // bytes on the server, never from this header.
+  app.use('/api/backgrounds', express.raw({ type: '*/*', limit: MAX_BACKGROUND_BYTES }));
 
   // One process serves the editor, the headless render host and the export API, so
   // Playwright can always reach the render page at a known URL.
@@ -34,6 +38,26 @@ async function main(): Promise<void> {
       ffmpegError = err instanceof Error ? err.message : String(err);
     }
     res.json({ ok: true, ffmpeg, ffmpegError });
+  });
+
+  app.post('/api/backgrounds', async (req, res) => {
+    try {
+      const stored = await storeBackground(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
+      res.status(201).json(stored);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get('/api/backgrounds/:id', async (req, res) => {
+    try {
+      const { buffer, type } = await readBackground(req.params.id);
+      res.setHeader('Content-Type', type);
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(buffer);
+    } catch {
+      res.status(404).json({ error: 'Background image not found.' });
+    }
   });
 
   app.post('/api/export', (req, res) => {

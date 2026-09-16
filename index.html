@@ -55,6 +55,32 @@
       </section>
 
       <section>
+        <h2>Composition</h2>
+        <label>Background
+          <select id="bgMode">
+            <option value="solid">Solid color</option>
+            <option value="image">Image</option>
+            <option value="transparent">Transparent</option>
+          </select>
+        </label>
+        <div class="row" data-field="bgImage">
+          <button id="bgUploadBtn" class="secondary" type="button">Upload image…</button>
+          <input id="bgUploadInput" type="file" accept="image/png,image/jpeg" hidden />
+        </div>
+        <label data-field="bgImage">Image fit
+          <select id="bgFit">
+            <option value="cover">Cover — fill the frame</option>
+            <option value="contain">Contain — fit inside</option>
+          </select>
+        </label>
+        <div id="bgStatus" class="status"></div>
+
+        <button id="chartOnly" class="secondary" type="button">Chart Only</button>
+        <button id="showAll" class="secondary" type="button">Show everything</button>
+        <div class="toggles" id="visibility"></div>
+      </section>
+
+      <section>
         <h2>Colors</h2>
         <label>Theme <select id="theme"></select></label>
         <div class="colors">
@@ -87,6 +113,7 @@
       <section>
         <h2>Export</h2>
         <label>Resolution <select id="resolution"></select></label>
+        <label>Format <select id="format"></select></label>
         <label>Filename <input id="filename" type="text" /></label>
         <button id="export" class="primary" type="button">Export MP4</button>
         <div id="exportStatus" class="status"></div>

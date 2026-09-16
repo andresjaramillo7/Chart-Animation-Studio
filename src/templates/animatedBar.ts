@@ -1,5 +1,5 @@
 import type { EChartsOption } from 'echarts';
-import type { BarSpec } from '../shared/types.js';
+import { DEFAULT_COMPOSITION, type BarSpec, type Composition } from '../shared/types.js';
 import { clamp01, itemProgress } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
@@ -16,16 +16,18 @@ export function buildAnimatedBarOption(
   spec: BarSpec,
   progress: number,
   canvas: Canvas = LANDSCAPE,
+  composition: Composition = DEFAULT_COMPOSITION,
 ): EChartsOption {
   const t = clamp01(progress);
   const { theme } = spec;
+  const show = composition.show;
   const layout = getLayout(canvas);
   const horizontal = (spec.orientation ?? 'vertical') === 'horizontal';
   const reveal = spec.reveal ?? 'simultaneous';
   const decimals = decimalsOf(spec.data.map((d) => d.value));
   const suffix = valueSuffix(spec.valueMode);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
   const categories = spec.data.map((d) => d.category);
   const count = spec.data.length;
 
@@ -48,11 +50,14 @@ export function buildAnimatedBarOption(
 
   // A horizontal category axis renders its first entry at the bottom; inverting keeps
   // the source order reading top-to-bottom.
-  const catAxis = { ...categoryAxis(categories, layout, theme, fit), ...(horizontal ? { inverse: true } : {}) };
-  const valAxis = valueAxis(spec.valueMode, layout, theme);
+  const catAxis = {
+    ...categoryAxis(categories, layout, theme, fit, show),
+    ...(horizontal ? { inverse: true } : {}),
+  };
+  const valAxis = valueAxis(spec.valueMode, layout, theme, show);
 
   return {
-    ...baseOption(theme),
+    ...baseOption(theme, composition),
     title: header.title,
     graphic: header.graphic,
     grid,
@@ -82,7 +87,7 @@ export function buildAnimatedBarOption(
         barMaxWidth: Math.round(layout.width * 0.085),
         animation: false,
         label: {
-          show: true,
+          show: show.valueLabels,
           position: horizontal ? 'right' : 'top',
           distance: Math.round(layout.valueLabelSize * 0.5),
           color: theme.text,

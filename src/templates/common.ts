@@ -1,4 +1,4 @@
-import type { Theme, ValueMode } from '../shared/types.js';
+import type { Composition, Theme, ValueMode, VisibilitySpec } from '../shared/types.js';
 import { FONT_STACK, countLines, wrapText, type Layout } from '../shared/layout.js';
 import { valueSuffix } from '../shared/format.js';
 
@@ -6,7 +6,8 @@ export { FONT_STACK };
 
 /**
  * Pieces every template shares, so the four templates read as one design system:
- * the same title placement, the same margins, the same axis treatment.
+ * the same title placement, the same margins, the same axis treatment — and the same
+ * response to the composition settings.
  */
 
 /** Blend a hex color toward transparency. Accepts #rgb / #rrggbb. */
@@ -36,27 +37,42 @@ export interface Header {
 /**
  * Title block: an accent rule, the title, and an optional subtitle, wrapped to the
  * canvas so nothing is ever clipped. Returns the Y at which content can start.
+ *
+ * When the titling is hidden the block collapses to a plain top margin and the freed
+ * space is handed back to the plot — the content is never cropped away instead.
  */
 export function buildHeader(
   title: string,
   subtitle: string,
   layout: Layout,
   theme: Theme,
+  show: VisibilitySpec,
 ): Header {
   const textLeft = layout.pad + Math.round(layout.accentWidth * 4.5);
   const textWidth = layout.width - textLeft - layout.pad;
 
-  const wrappedTitle = wrapText(title, textWidth, layout.titleSize, true);
-  const wrappedSubtitle = wrapText(subtitle, textWidth, layout.subtitleSize, false);
+  const wantTitle = show.title && title.trim() !== '';
+  const wantSubtitle = show.subtitle && subtitle.trim() !== '';
+
+  if (!wantTitle && !wantSubtitle) {
+    return { title: { show: false }, graphic: [], contentTop: layout.pad };
+  }
+
+  const wrappedTitle = wantTitle ? wrapText(title, textWidth, layout.titleSize, true) : '';
+  const wrappedSubtitle = wantSubtitle ? wrapText(subtitle, textWidth, layout.subtitleSize, false) : '';
   const titleLines = countLines(wrappedTitle);
   const subtitleLines = countLines(wrappedSubtitle);
 
   const headerHeight =
     titleLines * layout.titleLineHeight +
-    (subtitleLines > 0 ? layout.titleGap + subtitleLines * layout.subtitleLineHeight : 0);
+    (subtitleLines > 0
+      ? (titleLines > 0 ? layout.titleGap : 0) + subtitleLines * layout.subtitleLineHeight
+      : 0);
 
   return {
     title: {
+      // ECharts renders the subtext under an empty text just fine, so a subtitle-only
+      // header still sits exactly where a full header's subtitle would.
       text: wrappedTitle,
       subtext: wrappedSubtitle,
       left: textLeft,
@@ -102,7 +118,12 @@ export function buildHeader(
  * A zero-based value axis. Percentage data is always pinned to 0-100 so differences
  * are never visually exaggerated; numeric data auto-scales upward from zero.
  */
-export function valueAxis(valueMode: ValueMode, layout: Layout, theme: Theme): Record<string, unknown> {
+export function valueAxis(
+  valueMode: ValueMode,
+  layout: Layout,
+  theme: Theme,
+  show: VisibilitySpec,
+): Record<string, unknown> {
   const suffix = valueSuffix(valueMode);
   return {
     type: 'value',
@@ -110,8 +131,12 @@ export function valueAxis(valueMode: ValueMode, layout: Layout, theme: Theme): R
     ...(valueMode === 'percent' ? { max: 100, interval: 25 } : {}),
     axisLine: { show: false },
     axisTick: { show: false },
-    splitLine: { lineStyle: { color: theme.grid, width: 1, type: [6, 8] as unknown as 'dashed' } },
+    splitLine: {
+      show: show.gridlines,
+      lineStyle: { color: theme.grid, width: 1, type: [6, 8] as unknown as 'dashed' },
+    },
     axisLabel: {
+      show: show.axisLabels,
       color: withAlpha(theme.text, 0.45),
       fontSize: Math.round(layout.axisLabelSize * 0.86),
       fontFamily: FONT_STACK,
@@ -127,13 +152,15 @@ export function categoryAxis(
   layout: Layout,
   theme: Theme,
   fit: { fontSize: number; rotate: number },
+  show: VisibilitySpec,
 ): Record<string, unknown> {
   return {
     type: 'category',
     data: categories,
-    axisLine: { lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
+    axisLine: { show: show.axes, lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
     axisTick: { show: false },
     axisLabel: {
+      show: show.axisLabels,
       color: withAlpha(theme.text, 0.62),
       fontSize: fit.fontSize,
       fontFamily: FONT_STACK,
@@ -145,12 +172,17 @@ export function categoryAxis(
   };
 }
 
-/** Shared option scaffolding: background, fonts, and native animation switched off. */
-export function baseOption(theme: Theme): Record<string, unknown> {
+/**
+ * Shared option scaffolding: fonts, native animation off, and the canvas background.
+ *
+ * The canvas is painted only in solid mode. For an image or a transparent composition
+ * the ECharts canvas stays transparent so the layer behind it (the background image, or
+ * nothing at all) shows through — that is what makes a genuinely transparent export
+ * possible rather than a chart drawn onto an opaque rectangle.
+ */
+export function baseOption(theme: Theme, composition: Composition): Record<string, unknown> {
   return {
-    backgroundColor: theme.background,
-    // Native animation is irrelevant for export and is disabled by the render host;
-    // the editor preview drives progression through the same deterministic timeline.
+    backgroundColor: composition.background.mode === 'solid' ? theme.background : 'transparent',
     animation: false,
     textStyle: { fontFamily: FONT_STACK, color: theme.text },
   };

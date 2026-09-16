@@ -1,5 +1,5 @@
 import type { EChartsOption } from 'echarts';
-import type { ComparisonSpec } from '../shared/types.js';
+import { DEFAULT_COMPOSITION, type ComparisonSpec, type Composition } from '../shared/types.js';
 import { clamp01, itemProgress } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
@@ -22,20 +22,22 @@ export function buildComparisonOption(
   spec: ComparisonSpec,
   progress: number,
   canvas: Canvas = LANDSCAPE,
+  composition: Composition = DEFAULT_COMPOSITION,
 ): EChartsOption {
   const t = clamp01(progress);
   const { theme } = spec;
+  const show = composition.show;
   const layout = getLayout(canvas);
   const reveal = spec.reveal ?? 'simultaneous';
   const decimals = decimalsOf(spec.data.map((d) => d.value));
   const suffix = valueSuffix(spec.valueMode);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
   const categories = spec.data.map((d) => d.category);
   const count = spec.data.length;
 
   return {
-    ...baseOption(theme),
+    ...baseOption(theme, composition),
     title: header.title,
     graphic: header.graphic,
     grid: {
@@ -46,11 +48,14 @@ export function buildComparisonOption(
       bottom: layout.gridBottom,
       containLabel: true,
     },
-    xAxis: categoryAxis(categories, layout, theme, {
-      fontSize: layout.comparisonCategorySize,
-      rotate: 0,
-    }),
-    yAxis: valueAxis(spec.valueMode, layout, theme),
+    xAxis: categoryAxis(
+      categories,
+      layout,
+      theme,
+      { fontSize: layout.comparisonCategorySize, rotate: 0 },
+      show,
+    ),
+    yAxis: valueAxis(spec.valueMode, layout, theme, show),
     series: [
       {
         type: 'bar',
@@ -71,7 +76,7 @@ export function buildComparisonOption(
         animation: false,
         emphasis: { disabled: true },
         label: {
-          show: true,
+          show: show.valueLabels,
           position: 'top',
           distance: Math.round(layout.comparisonValueSize * 0.34),
           color: theme.text,

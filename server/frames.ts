@@ -1,30 +1,42 @@
 import path from 'node:path';
 import { chromium, type Browser } from 'playwright';
-import type { ChartSpec, AnimationSpec } from '../src/shared/types.js';
+import type { AnimationSpec, ChartSpec, Composition } from '../src/shared/types.js';
 import { buildTimeline, frameProgress } from '../src/shared/timeline.js';
 
 export interface FrameJob {
   renderUrl: string;
   spec: ChartSpec;
   animation: AnimationSpec;
+  composition: Composition;
   width: number;
   height: number;
   frameDir: string;
+  /**
+   * Timeline frame indices to capture, in order. Defaults to the whole timeline;
+   * a single-PNG export passes just the final index.
+   */
+  frameIndices?: number[];
   onFrame?: (done: number, total: number) => void;
 }
 
 export const FRAME_PATTERN = 'frame_%06d.png';
-const frameName = (i: number) => `frame_${String(i).padStart(6, '0')}.png`;
+export const frameName = (i: number): string => `frame_${String(i).padStart(6, '0')}.png`;
 
 /**
- * Render every frame of the timeline with Playwright.
+ * Render frames with Playwright.
  *
  * Frame timing is computed here from the shared timeline, never from wall-clock time
  * inside the browser, so the sequence is fully deterministic. The page is only asked
  * to draw a given progress value, which keeps this pipeline template-agnostic.
+ *
+ * Captured files are always named by their position in the output sequence, so a
+ * single-frame PNG export lands on frame_000000.png regardless of which timeline frame
+ * it came from.
  */
 export async function renderFrames(job: FrameJob): Promise<number> {
   const timeline = buildTimeline(job.animation);
+  const indices = job.frameIndices ?? Array.from({ length: timeline.totalFrames }, (_, i) => i);
+  const transparent = job.composition.background.mode === 'transparent';
   let browser: Browser | null = null;
 
   try {
@@ -69,29 +81,34 @@ export async function renderFrames(job: FrameJob): Promise<number> {
       );
     }
 
+    // init resolves only once fonts are ready and any background image has decoded.
     await page.evaluate(
-      ([spec, w, h]) => window.ChartStudio.init(spec as ChartSpec, w as number, h as number),
-      [job.spec, job.width, job.height] as const,
+      ([spec, w, h, comp]) =>
+        window.ChartStudio.init(spec as ChartSpec, w as number, h as number, comp as Composition),
+      [job.spec, job.width, job.height, job.composition] as const,
     );
 
-    for (let i = 0; i < timeline.totalFrames; i++) {
-      const progress = frameProgress(i, job.animation);
+    for (let out = 0; out < indices.length; out++) {
+      const progress = frameProgress(indices[out], job.animation);
       await page.evaluate((p) => window.ChartStudio.renderFrame(p as number), progress);
       await page.screenshot({
-        path: path.join(job.frameDir, frameName(i)),
+        path: path.join(job.frameDir, frameName(out)),
         type: 'png',
         clip: { x: 0, y: 0, width: job.width, height: job.height },
+        // The only thing that keeps the alpha channel: without it Chromium composites
+        // the page onto opaque white before the capture.
+        omitBackground: transparent,
         animations: 'disabled',
         caret: 'hide',
       });
-      job.onFrame?.(i + 1, timeline.totalFrames);
+      job.onFrame?.(out + 1, indices.length);
     }
 
     if (pageErrors.length) {
       throw new Error(`Errors were reported by the render page: ${pageErrors.slice(0, 5).join(' | ')}`);
     }
 
-    return timeline.totalFrames;
+    return indices.length;
   } finally {
     await browser.close().catch(() => undefined);
   }

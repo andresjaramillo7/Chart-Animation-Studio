@@ -131,6 +131,8 @@ export interface AnimationSpec {
 export interface ExportRequest {
   chart: ChartSpec;
   animation: AnimationSpec;
+  composition: Composition;
+  format: ExportFormat;
   filename: string;
   width: number;
   height: number;
@@ -143,8 +145,99 @@ export interface JobState {
   status: JobStatus;
   /** Frames captured so far. */
   framesDone: number;
+  /** Frames this job will capture, which is 1 for a single-PNG export. */
   totalFrames: number;
+  /** Frames in the animation timeline, regardless of how many are captured. */
+  timelineFrames: number;
+  format: ExportFormat;
   message: string;
+  /** Final name inside outputs/ — a file, or a directory for a PNG sequence. */
   filename?: string;
   error?: string;
 }
+
+/* ---------------------------------------------------------------------------
+ * Composition — how the chart is framed and what is drawn around it.
+ *
+ * Deliberately separate from ChartSpec: composition settings survive a change of
+ * template or dataset, and the same settings apply to all four templates.
+ * ------------------------------------------------------------------------- */
+
+export type BackgroundMode = 'solid' | 'image' | 'transparent';
+export type ImageFit = 'cover' | 'contain';
+
+export interface BackgroundSpec {
+  mode: BackgroundMode;
+  /** Id of an image uploaded to the local backend; only used when mode is 'image'. */
+  imageId: string | null;
+  fit: ImageFit;
+}
+
+/** Independently toggleable composition elements. */
+export interface VisibilitySpec {
+  title: boolean;
+  subtitle: boolean;
+  /** Category and value tick labels. */
+  axisLabels: boolean;
+  /** Axis lines themselves. */
+  axes: boolean;
+  gridlines: boolean;
+  legend: boolean;
+  /** The per-datum read-outs drawn on the bars/points. */
+  valueLabels: boolean;
+}
+
+export interface Composition {
+  background: BackgroundSpec;
+  show: VisibilitySpec;
+}
+
+export const ALL_VISIBLE: VisibilitySpec = {
+  title: true,
+  subtitle: true,
+  axisLabels: true,
+  axes: true,
+  gridlines: true,
+  legend: true,
+  valueLabels: true,
+};
+
+/**
+ * Chart Only: drops the titling and the decoration, keeps the data visualization
+ * itself — axes, tick labels and value read-outs all stay.
+ */
+export const CHART_ONLY: VisibilitySpec = {
+  title: false,
+  subtitle: false,
+  axisLabels: true,
+  axes: true,
+  gridlines: false,
+  legend: false,
+  valueLabels: true,
+};
+
+export const DEFAULT_COMPOSITION: Composition = {
+  background: { mode: 'solid', imageId: null, fit: 'cover' },
+  show: ALL_VISIBLE,
+};
+
+/** MP4 stays H.264/yuv420p; the PNG formats are the transparency-capable ones. */
+export type ExportFormat = 'mp4' | 'png' | 'png-sequence';
+
+export const EXPORT_FORMAT_LABELS: Record<ExportFormat, string> = {
+  mp4: 'MP4 video (H.264, opaque)',
+  png: 'PNG — final frame',
+  'png-sequence': 'PNG sequence — every frame',
+};
+
+/** Formats that can carry an alpha channel. */
+export const TRANSPARENCY_CAPABLE: ExportFormat[] = ['png', 'png-sequence'];
+
+export function supportsTransparency(format: ExportFormat): boolean {
+  return TRANSPARENCY_CAPABLE.includes(format);
+}
+
+export const TRANSPARENT_MP4_MESSAGE =
+  'MP4 is encoded as H.264 with yuv420p, which has no alpha channel, so a transparent ' +
+  'composition cannot be exported as MP4. Choose PNG or PNG sequence to keep transparency, ' +
+  'or switch the background to a solid color or an image.';

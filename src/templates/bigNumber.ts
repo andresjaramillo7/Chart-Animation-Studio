@@ -1,5 +1,5 @@
 import type { EChartsOption } from 'echarts';
-import type { BigNumberSpec } from '../shared/types.js';
+import { DEFAULT_COMPOSITION, type BigNumberSpec, type Composition } from '../shared/types.js';
 import { clamp01 } from '../shared/timeline.js';
 import { formatNumber } from '../shared/format.js';
 import { LANDSCAPE, estimateTextWidth, getLayout, type Canvas } from '../shared/layout.js';
@@ -25,10 +25,11 @@ export function buildBigNumberOption(
   spec: BigNumberSpec,
   progress: number,
   canvas: Canvas = LANDSCAPE,
+  composition: Composition = DEFAULT_COMPOSITION,
 ): EChartsOption {
   const { theme } = spec;
   const layout = getLayout(canvas);
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, composition.show);
 
   const text = bigNumberText(spec, progress);
   // The final value is the widest the read-out ever gets; size against that so the
@@ -43,16 +44,18 @@ export function buildBigNumberOption(
   const centreY = header.contentTop + (layout.height - header.contentTop - layout.gridBottom) / 2;
 
   return {
-    ...baseOption(theme),
+    ...baseOption(theme, composition),
     title: header.title,
     graphic: [
       ...header.graphic,
       {
         type: 'text',
-        left: 'center',
-        top: Math.round(centreY),
         silent: true,
         style: {
+          // Anchored through style.x/y so textAlign/textVerticalAlign actually centre the
+          // text on this point; `left`/`top` would place the box corner instead.
+          x: Math.round(layout.width / 2),
+          y: Math.round(centreY),
           text,
           fill: theme.accent,
           font: `700 ${fontSize}px ${FONT_STACK}`,

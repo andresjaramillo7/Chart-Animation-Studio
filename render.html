@@ -2,8 +2,16 @@
 <meta charset="utf-8" />
 <title>Chart Animation Studio — render host</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
-  #stage { position: absolute; top: 0; left: 0; }
+  /* Everything stays transparent by default so Playwright's omitBackground can keep
+     the alpha channel. The stage paints its own background when one is configured;
+     there is deliberately no checkerboard anywhere on this page. */
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #stage {
+    position: absolute; top: 0; left: 0;
+    background-repeat: no-repeat;
+    background-position: center center;
+  }
+  #chart { position: absolute; top: 0; left: 0; }
 </style>
-<div id="stage"></div>
+<div id="stage"><div id="chart"></div></div>
 <script type="module" src="/src/render/main.ts"></script>

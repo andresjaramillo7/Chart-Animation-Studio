@@ -96,12 +96,16 @@ describe('big number composition', () => {
   it('renders the value as a centred graphic text with the title from the spec', () => {
     const option = buildBigNumberOption(specOf('a'), 1) as unknown as {
       title: { text: string };
-      graphic: Array<{ type: string; left?: string; style?: { text?: string } }>;
+      graphic: Array<{ type: string; style?: { text?: string; x?: number; textAlign?: string; textVerticalAlign?: string } }>;
       series: unknown[];
     };
     expect(option.title.text).toBe('Ranked Games Analyzed');
     expect(graphicText(option)).toBe('11,149');
-    expect(option.graphic.find((g) => g.type === 'text')?.left).toBe('center');
+    const value = option.graphic.find((g) => g.type === 'text');
+    // Anchored on the horizontal centre of the frame, centred on that point.
+    expect(value?.style?.x).toBe(960);
+    expect(value?.style?.textAlign).toBe('center');
+    expect(value?.style?.textVerticalAlign).toBe('middle');
     expect(option.series).toEqual([]);
   });
 

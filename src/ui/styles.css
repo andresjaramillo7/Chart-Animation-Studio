@@ -71,3 +71,18 @@ button.primary { background: var(--blue); border-color: var(--blue); color: #fff
 label.inline { flex-direction: row; align-items: center; gap: 8px; }
 label.inline input { width: auto; }
 [hidden] { display: none !important; }
+
+.toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.toggles label { flex-direction: row; align-items: center; gap: 7px; font-size: 12px; }
+.toggles input { width: auto; }
+
+/* Preview-only transparency checkerboard. Deliberately not present in render.html,
+   so it can never appear in an exported frame. */
+.preview-frame.checkered {
+  background-color: #6b6b6b;
+  background-image:
+    linear-gradient(45deg, #4a4a4a 25%, transparent 25%, transparent 75%, #4a4a4a 75%),
+    linear-gradient(45deg, #4a4a4a 25%, transparent 25%, transparent 75%, #4a4a4a 75%);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+}

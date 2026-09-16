@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildComparisonOption } from '../src/templates/comparison.js';
 import { parseCsv } from '../src/shared/csv.js';
 import { SCALING_COMPARISON_CSV, SCALING_COMPARISON_0_3K_CSV } from '../src/presets/scalingComparison.js';
-import { DARK_MINIMAL, type ComparisonSpec } from '../src/shared/types.js';
+import { DARK_MINIMAL, DEFAULT_COMPOSITION, type ComparisonSpec } from '../src/shared/types.js';
 import { TEMPLATE_META } from '../src/templates/index.js';
 import { validateExportRequest } from '../server/validate.js';
 
@@ -37,6 +37,8 @@ function request(data: Array<{ category: string; value: number }>) {
       theme: DARK_MINIMAL,
     },
     animation: { durationSeconds: 1, holdSeconds: 0.5, easing: 'ease-out', fps: 30 },
+    composition: DEFAULT_COMPOSITION,
+    format: 'mp4',
     filename: 'x',
     width: 1920,
     height: 1080,

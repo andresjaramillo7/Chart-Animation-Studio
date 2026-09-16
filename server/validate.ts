@@ -1,6 +1,30 @@
-import type { ChartSpec, DataChartSpec, Easing, ExportRequest, ValueMode } from '../src/shared/types.js';
+import {
+  EXPORT_FORMAT_LABELS,
+  supportsTransparency,
+  TRANSPARENT_MP4_MESSAGE,
+  type ChartSpec,
+  type Composition,
+  type DataChartSpec,
+  type Easing,
+  type ExportFormat,
+  type ExportRequest,
+  type ValueMode,
+  type VisibilitySpec,
+} from '../src/shared/types.js';
 import { RESOLUTIONS } from '../src/shared/layout.js';
 import { TEMPLATE_META, isTemplateId } from '../src/templates/index.js';
+import { isUploadId } from './paths.js';
+
+const FORMATS = Object.keys(EXPORT_FORMAT_LABELS) as ExportFormat[];
+const VISIBILITY_KEYS: Array<keyof VisibilitySpec> = [
+  'title',
+  'subtitle',
+  'axisLabels',
+  'axes',
+  'gridlines',
+  'legend',
+  'valueLabels',
+];
 
 const MAX_FRAMES = 30 * 60 * 2; // two minutes at 30fps — a guard against runaway jobs
 
@@ -20,6 +44,15 @@ export function validateExportRequest(
 
   validateChart(b.chart, errors);
   validateAnimation(b.animation, errors);
+  validateComposition(b.composition, errors);
+
+  const format = b.format as ExportFormat;
+  if (!FORMATS.includes(format)) {
+    errors.push(`"format" must be one of: ${FORMATS.join(', ')}.`);
+  } else if (b.composition?.background?.mode === 'transparent' && !supportsTransparency(format)) {
+    // Refused up front rather than silently flattened onto an opaque background.
+    errors.push(TRANSPARENT_MP4_MESSAGE);
+  }
 
   const size = `${b.width}x${b.height}`;
   if (!ALLOWED_SIZES.includes(size)) {
@@ -29,6 +62,40 @@ export function validateExportRequest(
 
   if (errors.length) return { ok: false, errors };
   return { ok: true, value: b as ExportRequest };
+}
+
+function validateComposition(composition: Composition | undefined, errors: string[]): void {
+  if (!composition || typeof composition !== 'object') {
+    errors.push('Missing "composition".');
+    return;
+  }
+  const bg = composition.background;
+  if (!bg || typeof bg !== 'object') {
+    errors.push('Missing "composition.background".');
+  } else {
+    if (bg.mode !== 'solid' && bg.mode !== 'image' && bg.mode !== 'transparent') {
+      errors.push('"composition.background.mode" must be "solid", "image" or "transparent".');
+    }
+    if (bg.fit !== 'cover' && bg.fit !== 'contain') {
+      errors.push('"composition.background.fit" must be "cover" or "contain".');
+    }
+    if (bg.mode === 'image') {
+      if (typeof bg.imageId !== 'string' || !isUploadId(bg.imageId)) {
+        errors.push('"composition.background.imageId" must be the id of an uploaded image.');
+      }
+    } else if (bg.imageId != null && typeof bg.imageId !== 'string') {
+      errors.push('"composition.background.imageId" must be a string or null.');
+    }
+  }
+
+  const show = composition.show;
+  if (!show || typeof show !== 'object') {
+    errors.push('Missing "composition.show".');
+    return;
+  }
+  for (const key of VISIBILITY_KEYS) {
+    if (typeof show[key] !== 'boolean') errors.push(`"composition.show.${key}" must be true or false.`);
+  }
 }
 
 function validateChart(chart: ChartSpec | undefined, errors: string[]): void {
