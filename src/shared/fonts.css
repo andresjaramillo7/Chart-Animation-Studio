@@ -1,0 +1,21 @@
+/**
+ * Brand typefaces, bundled from local files.
+ *
+ * Both entry points (the editor and the headless render host) import this one file, so
+ * the preview and the export resolve the identical font binaries. Nothing here reaches
+ * Google Fonts or any other network host at render time, and nothing depends on a font
+ * being installed on the machine.
+ *
+ * Inter — SIL Open Font License 1.1
+ * IBM Plex Mono — SIL Open Font License 1.1
+ * See THIRD-PARTY-LICENSES.md.
+ */
+
+/* Inter: regular for body text, semibold for read-outs, bold for titles. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+/* IBM Plex Mono: used sparingly for small technical annotations. */
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';

@@ -27,7 +27,23 @@ export const RESOLUTION_LABELS: Record<ResolutionId, string> = {
   portrait: '1080 x 1920 — portrait (Shorts)',
 };
 
-export const FONT_STACK = '"Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif';
+/**
+ * Inter is bundled locally (see src/shared/fonts.css); the rest of the stack only
+ * exists so a missing bundle degrades rather than crashes. The render host verifies
+ * that Inter actually resolved before capturing any frame.
+ */
+export const FONT_STACK = 'Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+
+/** Used sparingly, for small technical annotations and identifiers. */
+export const MONO_STACK = '"IBM Plex Mono", "Cascadia Mono", Consolas, monospace';
+
+/** The faces the renderer requires. Missing ones are reported, never silently swapped. */
+export const REQUIRED_FACES = [
+  '400 16px Inter',
+  '600 16px Inter',
+  '700 16px Inter',
+  '400 16px "IBM Plex Mono"',
+] as const;
 
 export interface Layout extends Canvas {
   portrait: boolean;
@@ -42,9 +58,18 @@ export interface Layout extends Canvas {
   titleGap: number;
   /** Gap between the header block and the plot area. */
   headerGap: number;
+  /** Thickness of the brand motif rule. */
   accentWidth: number;
+  /** Length of the brand motif rule. */
+  motifLength: number;
   axisLabelSize: number;
   valueLabelSize: number;
+  /** Legend text, kept identical across every template that has a legend. */
+  legendSize: number;
+  /** Axis name text, e.g. the scatter axis titles. */
+  axisTitleSize: number;
+  /** Small monospace annotations. */
+  monoSize: number;
   gridBottom: number;
   gridLeft: number;
   gridRight: number;
@@ -56,48 +81,60 @@ export interface Layout extends Canvas {
   symbolSize: number;
 }
 
+/**
+ * One typography and spacing scale per composition, so nine templates share a single
+ * visual hierarchy instead of each carrying its own magic numbers.
+ */
 const LANDSCAPE_BASE = {
-  pad: 96,
-  titleTop: 66,
-  titleSize: 58,
-  titleLineHeight: 70,
-  subtitleSize: 27,
+  pad: 110,
+  titleTop: 96,
+  titleSize: 56,
+  titleLineHeight: 68,
+  subtitleSize: 26,
   subtitleLineHeight: 36,
-  titleGap: 18,
-  headerGap: 106,
-  accentWidth: 8,
-  axisLabelSize: 30,
-  valueLabelSize: 32,
-  gridBottom: 104,
-  gridLeft: 110,
-  gridRight: 96,
-  comparisonValueSize: 76,
-  comparisonCategorySize: 38,
-  bigValueSize: 260,
-  lineWidth: 6,
-  symbolSize: 18,
+  titleGap: 16,
+  headerGap: 104,
+  accentWidth: 4,
+  motifLength: 72,
+  axisLabelSize: 28,
+  valueLabelSize: 31,
+  legendSize: 26,
+  axisTitleSize: 26,
+  monoSize: 22,
+  gridBottom: 112,
+  gridLeft: 104,
+  gridRight: 104,
+  comparisonValueSize: 78,
+  comparisonCategorySize: 36,
+  bigValueSize: 268,
+  lineWidth: 5,
+  symbolSize: 17,
 };
 
 const PORTRAIT_BASE = {
-  pad: 72,
-  titleTop: 150,
-  titleSize: 66,
-  titleLineHeight: 82,
-  subtitleSize: 34,
+  pad: 76,
+  titleTop: 170,
+  titleSize: 64,
+  titleLineHeight: 80,
+  subtitleSize: 33,
   subtitleLineHeight: 46,
-  titleGap: 22,
-  headerGap: 150,
-  accentWidth: 10,
-  axisLabelSize: 34,
-  valueLabelSize: 40,
-  gridBottom: 300,
-  gridLeft: 56,
-  gridRight: 56,
-  comparisonValueSize: 78,
-  comparisonCategorySize: 40,
-  bigValueSize: 190,
-  lineWidth: 8,
-  symbolSize: 22,
+  titleGap: 20,
+  headerGap: 140,
+  accentWidth: 5,
+  motifLength: 84,
+  axisLabelSize: 33,
+  valueLabelSize: 39,
+  legendSize: 31,
+  axisTitleSize: 31,
+  monoSize: 26,
+  gridBottom: 290,
+  gridLeft: 60,
+  gridRight: 60,
+  comparisonValueSize: 80,
+  comparisonCategorySize: 38,
+  bigValueSize: 196,
+  lineWidth: 7,
+  symbolSize: 21,
 };
 
 /**
@@ -123,7 +160,9 @@ export function getLayout(canvas: Canvas): Layout {
  * shrink; it errs wide so content is never clipped.
  */
 export function estimateTextWidth(text: string, fontSize: number, bold = false): number {
-  return text.length * fontSize * (bold ? 0.58 : 0.53);
+  // Measured against Inter: ~0.55em per glyph bold, ~0.52em regular, rounded up so the
+  // estimate errs wide and content is never clipped.
+  return text.length * fontSize * (bold ? 0.56 : 0.52);
 }
 
 /** Greedy word wrap into a `\n`-joined string ECharts can render directly. */

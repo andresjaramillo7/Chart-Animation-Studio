@@ -12,6 +12,7 @@ describe('preset data integrity', () => {
   it('ships one immediately selectable preset per template family', () => {
     expect(PRESETS.map((p) => p.id)).toEqual([
       'comeback-curve',
+      'comeback-curve-gold',
       'comeback-curve-line',
       'comeback-curve-area',
       'scaling-comparison',
@@ -27,6 +28,18 @@ describe('preset data integrity', () => {
   it('covers every registered template with at least one preset', () => {
     const covered = new Set(PRESETS.map((p) => p.template));
     for (const id of TEMPLATE_IDS) expect(covered.has(id), id).toBe(true);
+  });
+
+  it('maps the gold scheme onto real gold-deficit data without altering it', () => {
+    const gold = getPreset('comeback-curve-gold');
+    expect(gold?.dataScheme).toBe('gold');
+    // Same observations, same copy as the plain Comeback Curve preset.
+    expect(gold?.csv).toBe(COMEBACK_CURVE_CSV);
+    expect(gold?.title).toBe(getPreset('comeback-curve')?.title);
+    expect(gold?.subtitle).toBe(getPreset('comeback-curve')?.subtitle);
+    // No other preset silently adopts gold just because its copy mentions gold.
+    expect(getPreset('comeback-curve')?.dataScheme).toBeUndefined();
+    expect(getPreset('scaling-comparison-0-3k')?.dataScheme).toBeUndefined();
   });
 
   it('labels every synthetic example as illustrative, and no real preset as such', () => {

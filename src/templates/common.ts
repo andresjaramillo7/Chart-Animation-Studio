@@ -1,14 +1,15 @@
 import type { Composition, Theme, ValueMode, VisibilitySpec } from '../shared/types.js';
-import { FONT_STACK, countLines, wrapText, type Layout } from '../shared/layout.js';
-export type { Layout };
+import { FONT_STACK, MONO_STACK, countLines, wrapText, type Layout } from '../shared/layout.js';
+import { mix, mutedText } from '../shared/palette.js';
 import { valueSuffix } from '../shared/format.js';
 
-export { FONT_STACK };
+export type { Layout };
+export { FONT_STACK, MONO_STACK, mix };
 
 /**
- * Pieces every template shares, so the four templates read as one design system:
- * the same title placement, the same margins, the same axis treatment — and the same
- * response to the composition settings.
+ * The pieces every template shares, so nine templates read as one design system: the
+ * same title placement, the same margins, the same axis treatment, the same legend —
+ * and the same response to the composition settings.
  */
 
 /** Blend a hex color toward transparency. Accepts #rgb / #rrggbb. */
@@ -36,8 +37,13 @@ export interface Header {
 }
 
 /**
- * Title block: an accent rule, the title, and an optional subtitle, wrapped to the
+ * Title block: the brand motif, the title, and an optional subtitle, wrapped to the
  * canvas so nothing is ever clipped. Returns the Y at which content can start.
+ *
+ * The motif is a short thin rule in the accent colour, sitting above the title and
+ * aligned to the same left margin as everything else. It is optional, it is never
+ * inside the plot area, and it disappears with the titling — so Chart Only stays
+ * clean, and it costs nothing in a transparent export.
  *
  * When the titling is hidden the block collapses to a plain top margin and the freed
  * space is handed back to the plot — the content is never cropped away instead.
@@ -48,8 +54,9 @@ export function buildHeader(
   layout: Layout,
   theme: Theme,
   show: VisibilitySpec,
+  motif = true,
 ): Header {
-  const textLeft = layout.pad + Math.round(layout.accentWidth * 4.5);
+  const textLeft = layout.pad;
   const textWidth = layout.width - textLeft - layout.pad;
 
   const wantTitle = show.title && title.trim() !== '';
@@ -70,6 +77,22 @@ export function buildHeader(
       ? (titleLines > 0 ? layout.titleGap : 0) + subtitleLines * layout.subtitleLineHeight
       : 0);
 
+  const motifGap = Math.round(layout.titleSize * 0.52);
+  const top = motif ? layout.titleTop + motifGap : layout.titleTop;
+
+  const graphic: Array<Record<string, unknown>> = motif
+    ? [
+        {
+          type: 'rect',
+          left: layout.pad,
+          top: layout.titleTop,
+          shape: { width: layout.motifLength, height: layout.accentWidth, r: layout.accentWidth / 2 },
+          style: { fill: theme.accent },
+          silent: true,
+        },
+      ]
+    : [];
+
   return {
     title: {
       // ECharts renders the subtext under an empty text just fine, so a subtitle-only
@@ -77,7 +100,7 @@ export function buildHeader(
       text: wrappedTitle,
       subtext: wrappedSubtitle,
       left: textLeft,
-      top: layout.titleTop,
+      top,
       itemGap: layout.titleGap,
       textStyle: {
         color: theme.text,
@@ -87,32 +110,21 @@ export function buildHeader(
         lineHeight: layout.titleLineHeight,
       },
       subtextStyle: {
-        color: withAlpha(theme.text, 0.6),
+        color: mutedText(theme),
         fontSize: layout.subtitleSize,
         fontWeight: 400,
         fontFamily: FONT_STACK,
         lineHeight: layout.subtitleLineHeight,
       },
     },
-    graphic: [
-      {
-        type: 'rect',
-        left: layout.pad,
-        top: layout.titleTop + Math.round(layout.titleLineHeight * 0.08),
-        shape: {
-          width: layout.accentWidth,
-          height: Math.max(
-            layout.accentWidth * 4,
-            headerHeight - Math.round(layout.titleLineHeight * 0.2),
-          ),
-          r: layout.accentWidth / 2,
-        },
-        style: { fill: theme.accent },
-        silent: true,
-      },
-    ],
-    contentTop: layout.titleTop + headerHeight + layout.headerGap,
+    graphic,
+    contentTop: top + headerHeight + layout.headerGap,
   };
+}
+
+/** Whether the composition wants the brand motif drawn. */
+export function wantsMotif(composition: Composition): boolean {
+  return composition.motif ?? true;
 }
 
 /**
@@ -134,11 +146,13 @@ export function valueAxis(
     axisTick: { show: false },
     splitLine: {
       show: show.gridlines,
-      lineStyle: { color: theme.grid, width: 1, type: [6, 8] as unknown as 'dashed' },
+      // A hairline in the divider token: present enough to read against, quiet enough
+      // to disappear behind the data.
+      lineStyle: { color: theme.grid, width: 1, type: 'solid' },
     },
     axisLabel: {
       show: show.axisLabels,
-      color: withAlpha(theme.text, 0.45),
+      color: withAlpha(mutedText(theme), 0.75),
       fontSize: Math.round(layout.axisLabelSize * 0.86),
       fontFamily: FONT_STACK,
       margin: Math.round(layout.axisLabelSize * 0.8),
@@ -158,14 +172,14 @@ export function categoryAxis(
   return {
     type: 'category',
     data: categories,
-    axisLine: { show: show.axes, lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
+    axisLine: { show: show.axes, lineStyle: { color: theme.grid, width: 1 } },
     axisTick: { show: false },
     axisLabel: {
       show: show.axisLabels,
-      color: withAlpha(theme.text, 0.62),
+      color: mutedText(theme),
       fontSize: fit.fontSize,
       fontFamily: FONT_STACK,
-      margin: Math.round(layout.axisLabelSize * 0.7),
+      margin: Math.round(layout.axisLabelSize * 0.8),
       interval: 0,
       rotate: fit.rotate,
       hideOverlap: false,
@@ -190,49 +204,8 @@ export function baseOption(theme: Theme, composition: Composition): Record<strin
 }
 
 /**
- * A categorical palette derived from the active theme, so multi-series charts stay in
- * the same restrained colour world as the single-series ones.
- *
- * The ramp walks from the primary toward the accent in a fixed order, so series N
- * always gets colour N — a series keeps its colour when the data changes.
- */
-export function seriesPalette(theme: Theme, count: number): string[] {
-  const stops = [theme.primary, theme.accent, mix(theme.primary, theme.text, 0.35), mix(theme.accent, theme.background, 0.3), mix(theme.primary, theme.background, 0.45)];
-  if (count <= stops.length) return stops.slice(0, Math.max(1, count));
-  // More series than stops: keep cycling, darkening each pass so nothing repeats exactly.
-  return Array.from({ length: count }, (_, i) => {
-    const base = stops[i % stops.length];
-    const pass = Math.floor(i / stops.length);
-    return pass === 0 ? base : mix(base, theme.background, Math.min(0.6, pass * 0.22));
-  });
-}
-
-/** Blend two hex colors. `amount` is how much of `b` to mix into `a`. */
-export function mix(a: string, b: string, amount: number): string {
-  const pa = hexToRgb(a);
-  const pb = hexToRgb(b);
-  if (!pa || !pb) return a;
-  const t = Math.max(0, Math.min(1, amount));
-  const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
-  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
-
-function hexToRgb(hex: string): [number, number, number] | null {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return null;
-  let h = m[1];
-  if (h.length === 3) {
-    h = h
-      .split('')
-      .map((c) => c + c)
-      .join('');
-  }
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-}
-
-/**
- * A legend styled like the rest of the composition. Returns a hidden legend when the
- * composition switches it off, so templates never have to branch.
+ * A legend styled identically for every template that has one. Returns a hidden legend
+ * when the composition switches it off, so templates never have to branch.
  */
 export function legendOption(
   names: string[],
@@ -241,25 +214,50 @@ export function legendOption(
   show: VisibilitySpec,
   palette: string[],
   highlight: string | null = null,
+  highlightColor: string = theme.accent,
 ): Record<string, unknown> {
   return {
     show: show.legend,
-    bottom: Math.round(layout.gridBottom * 0.35),
+    bottom: Math.round(layout.gridBottom * 0.3),
     left: 'center',
     orient: 'horizontal',
     icon: 'roundRect',
-    itemWidth: Math.round(layout.axisLabelSize * 0.8),
-    itemHeight: Math.round(layout.axisLabelSize * 0.8),
-    itemGap: Math.round(layout.axisLabelSize * 1.4),
+    itemWidth: Math.round(layout.legendSize * 0.72),
+    itemHeight: Math.round(layout.legendSize * 0.72),
+    itemGap: Math.round(layout.legendSize * 1.6),
     data: names.map((name, i) => ({
       name,
-      itemStyle: { color: highlight !== null && name === highlight ? theme.accent : palette[i] },
+      itemStyle: { color: highlight !== null && name === highlight ? highlightColor : palette[i] },
     })),
     textStyle: {
-      color: withAlpha(theme.text, 0.75),
-      fontSize: Math.round(layout.axisLabelSize * 0.9),
+      color: mutedText(theme),
+      fontSize: layout.legendSize,
       fontFamily: FONT_STACK,
     },
     selectedMode: false,
   };
 }
+
+/** Value read-outs, styled the same way wherever they appear. */
+export function valueLabelStyle(layout: Layout, theme: Theme, size = layout.valueLabelSize): Record<string, unknown> {
+  return {
+    color: theme.text,
+    fontSize: size,
+    fontWeight: 600,
+    fontFamily: FONT_STACK,
+    // Tabular figures keep columns of numbers from shifting between frames.
+    fontFeatureSettings: '"tnum" 1',
+  };
+}
+
+/** Small technical annotation styling — the only place the mono face is used. */
+export function monoLabelStyle(layout: Layout, theme: Theme): Record<string, unknown> {
+  return {
+    color: withAlpha(mutedText(theme), 0.85),
+    fontSize: layout.monoSize,
+    fontWeight: 400,
+    fontFamily: MONO_STACK,
+  };
+}
+
+export { mutedText };

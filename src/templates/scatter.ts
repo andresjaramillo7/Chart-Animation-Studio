@@ -2,9 +2,18 @@ import type { EChartsOption } from 'echarts';
 import { DEFAULT_COMPOSITION, type Composition, type ScatterSpec } from '../shared/types.js';
 import { clamp01, itemProgress } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
+import { specColors } from '../shared/palette.js';
 import { formatNumber } from '../shared/format.js';
 import { LANDSCAPE, getLayout, type Canvas } from '../shared/layout.js';
-import { FONT_STACK, baseOption, buildHeader, withAlpha } from './common.js';
+import {
+  FONT_STACK,
+  baseOption,
+  buildHeader,
+  mutedText,
+  valueLabelStyle,
+  wantsMotif,
+  withAlpha,
+} from './common.js';
 
 /**
  * How far each point has appeared, purely as a function of the timeline.
@@ -36,7 +45,9 @@ export function buildScatterOption(
   const show = composition.show;
   const layout = getLayout(canvas);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
+  const colors = specColors(spec, 1);
+
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show, wantsMotif(composition));
   const xs = spec.points.map((p) => p.x);
   const ys = spec.points.map((p) => p.y);
   const xDecimals = decimalsOf(xs);
@@ -44,7 +55,7 @@ export function buildScatterOption(
   const appearance = scatterPointProgress(spec, progress);
 
   const baseSize = Math.max(4, spec.symbolSize);
-  const axisTitleSize = Math.round(layout.axisLabelSize * 0.95);
+  const axisTitleSize = layout.axisTitleSize;
   const opaqueBackdrop = composition.background.mode === 'solid';
 
   return {
@@ -62,24 +73,26 @@ export function buildScatterOption(
     xAxis: {
       type: 'value',
       scale: true,
+      // Points sitting on the data extremes would otherwise be bisected by the axis.
+      boundaryGap: ['6%', '6%'],
       name: spec.xTitle,
       nameLocation: 'middle',
       nameGap: Math.round(axisTitleSize * 2.6),
       nameTextStyle: {
-        color: withAlpha(theme.text, 0.7),
+        color: mutedText(theme),
         fontSize: axisTitleSize,
         fontWeight: 600,
         fontFamily: FONT_STACK,
       },
-      axisLine: { show: show.axes, lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
+      axisLine: { show: show.axes, lineStyle: { color: theme.grid, width: 1 } },
       axisTick: { show: false },
       splitLine: {
         show: show.gridlines,
-        lineStyle: { color: theme.grid, width: 1, type: [6, 8] as unknown as 'dashed' },
+        lineStyle: { color: theme.grid, width: 1, type: 'solid' },
       },
       axisLabel: {
         show: show.axisLabels,
-        color: withAlpha(theme.text, 0.45),
+        color: withAlpha(mutedText(theme), 0.75),
         fontSize: Math.round(layout.axisLabelSize * 0.86),
         fontFamily: FONT_STACK,
         margin: Math.round(layout.axisLabelSize * 0.7),
@@ -89,13 +102,14 @@ export function buildScatterOption(
     yAxis: {
       type: 'value',
       scale: true,
+      boundaryGap: ['8%', '8%'],
       ...(spec.valueMode === 'percent' ? { min: 0, max: 100, interval: 25, scale: false } : {}),
       name: spec.yTitle,
       nameLocation: 'middle',
       nameGap: Math.round(layout.gridLeft * 0.75 + axisTitleSize * 2.4),
       nameRotate: 90,
       nameTextStyle: {
-        color: withAlpha(theme.text, 0.7),
+        color: mutedText(theme),
         fontSize: axisTitleSize,
         fontWeight: 600,
         fontFamily: FONT_STACK,
@@ -104,11 +118,11 @@ export function buildScatterOption(
       axisTick: { show: false },
       splitLine: {
         show: show.gridlines,
-        lineStyle: { color: theme.grid, width: 1, type: [6, 8] as unknown as 'dashed' },
+        lineStyle: { color: theme.grid, width: 1, type: 'solid' },
       },
       axisLabel: {
         show: show.axisLabels,
-        color: withAlpha(theme.text, 0.45),
+        color: withAlpha(mutedText(theme), 0.75),
         fontSize: Math.round(layout.axisLabelSize * 0.86),
         fontFamily: FONT_STACK,
         margin: Math.round(layout.axisLabelSize * 0.8),
@@ -128,7 +142,7 @@ export function buildScatterOption(
             value: [p.x, p.y],
             symbolSize: (highlighted ? baseSize * 1.6 : baseSize) * appeared,
             itemStyle: {
-              color: highlighted ? theme.accent : theme.primary,
+              color: highlighted ? colors.highlight : colors.series[0],
               opacity: appeared,
               borderColor: opaqueBackdrop ? theme.background : 'transparent',
               borderWidth: opaqueBackdrop ? Math.round(baseSize * 0.12) : 0,
@@ -136,7 +150,7 @@ export function buildScatterOption(
             label: {
               show: show.valueLabels && p.label !== '',
               opacity: clamp01((appeared - 0.5) / 0.5),
-              color: highlighted ? theme.accent : theme.text,
+              color: highlighted ? colors.highlight : theme.text,
             },
           };
         }),
@@ -144,10 +158,7 @@ export function buildScatterOption(
           show: show.valueLabels,
           position: 'top',
           distance: Math.round(baseSize * 0.55),
-          color: theme.text,
-          fontSize: Math.round(layout.valueLabelSize * 0.78),
-          fontWeight: 600,
-          fontFamily: FONT_STACK,
+          ...valueLabelStyle(layout, theme, Math.round(layout.valueLabelSize * 0.78)),
           formatter: (p: { dataIndex?: number }) => spec.points[p.dataIndex ?? 0]?.label ?? '',
         },
       },

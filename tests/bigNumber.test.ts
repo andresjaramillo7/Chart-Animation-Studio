@@ -3,7 +3,7 @@ import { bigNumberText, buildBigNumberOption } from '../src/templates/bigNumber.
 import { formatNumber } from '../src/shared/format.js';
 import { BIG_NUMBER_VARIANTS } from '../src/presets/bigNumbers.js';
 import { DARK_MINIMAL, type BigNumberSpec } from '../src/shared/types.js';
-import { PORTRAIT } from '../src/shared/layout.js';
+import { PORTRAIT, estimateTextWidth, getLayout } from '../src/shared/layout.js';
 
 function specOf(variantId: string): BigNumberSpec {
   const v = BIG_NUMBER_VARIANTS.find((x) => x.id === variantId);
@@ -122,8 +122,11 @@ describe('big number composition', () => {
     const font = option.graphic.find((g) => g.type === 'text')?.style?.font ?? '';
     const size = Number(/(\d+)px/.exec(font)?.[1]);
     expect(size).toBeGreaterThan(0);
-    // 15 characters must fit inside 1080 minus the side margins.
-    expect(size * 0.58 * '123,456,789,012.00'.length).toBeLessThanOrEqual(1080 - 72 * 2 + 1);
+    // The read-out must fit inside the portrait frame minus its side margins.
+    const layout = getLayout(PORTRAIT);
+    expect(estimateTextWidth('123,456,789,012.00', size, true)).toBeLessThanOrEqual(
+      layout.width - layout.pad * 2 + 1,
+    );
   });
 
   it('carries the three demo variants exactly as specified', () => {

@@ -1,4 +1,5 @@
 import type {
+  DataSchemeId,
   DonutDisplay,
   HeatmapReveal,
   Orientation,
@@ -33,6 +34,8 @@ export interface Preset {
   filename: string;
   csv?: string;
   highlight?: string | null;
+  /** Data colours. Omitted means the theme's own neutral ramp with accent emphasis. */
+  dataScheme?: DataSchemeId;
   orientation?: Orientation;
   reveal?: Reveal;
   /** Individually selectable Big Number variants. */
@@ -64,6 +67,22 @@ export const PRESETS: Preset[] = [
     orientation: 'vertical',
     reveal: 'simultaneous',
     filename: 'comeback-curve',
+  },
+  {
+    id: 'comeback-curve-gold',
+    name: 'Comeback Curve — Gold',
+    template: 'animated-bar',
+    title: 'Comeback Rate by Gold Deficit',
+    subtitle: 'Observed comeback rates among games continuing past 20 minutes.',
+    valueMode: 'percent',
+    csv: COMEBACK_CURVE_CSV,
+    highlight: '6000+',
+    orientation: 'vertical',
+    reveal: 'simultaneous',
+    // The categories are gold-deficit buckets, so the gold scheme is a deliberate
+    // semantic mapping made here by the preset — never inferred from the word "gold".
+    dataScheme: 'gold',
+    filename: 'comeback-curve-gold',
   },
   {
     id: 'comeback-curve-line',
@@ -134,6 +153,7 @@ export const PRESETS: Preset[] = [
     highlight: null,
     innerRadius: 58,
     donutDisplay: 'percent',
+    dataScheme: 'categorical',
     showTotal: false,
     centerLabel: '',
     filename: 'donut-example',
@@ -150,6 +170,7 @@ export const PRESETS: Preset[] = [
     orientation: 'vertical',
     reveal: 'simultaneous',
     stackMode: 'regular',
+    dataScheme: 'categorical',
     filename: 'stacked-example',
   },
   {

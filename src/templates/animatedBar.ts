@@ -2,9 +2,18 @@ import type { EChartsOption } from 'echarts';
 import { DEFAULT_COMPOSITION, type BarSpec, type Composition } from '../shared/types.js';
 import { clamp01, itemProgress } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
+import { specColors } from '../shared/palette.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
 import { LANDSCAPE, fitCategoryLabels, getLayout, type Canvas } from '../shared/layout.js';
-import { FONT_STACK, baseOption, buildHeader, categoryAxis, valueAxis, withAlpha } from './common.js';
+import {
+  baseOption,
+  buildHeader,
+  categoryAxis,
+  valueAxis,
+  valueLabelStyle,
+  wantsMotif,
+  withAlpha,
+} from './common.js';
 
 /**
  * Animated Bar — bars growing from zero, in either orientation.
@@ -27,7 +36,10 @@ export function buildAnimatedBarOption(
   const decimals = decimalsOf(spec.data.map((d) => d.value));
   const suffix = valueSuffix(spec.valueMode);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
+  // One neutral colour for the whole series; red only where a highlight is asked for.
+  const colors = specColors(spec, 1);
+
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show, wantsMotif(composition));
   const categories = spec.data.map((d) => d.category);
   const count = spec.data.length;
 
@@ -71,7 +83,7 @@ export function buildAnimatedBarOption(
           return {
             value: d.value * p,
             itemStyle: {
-              color: spec.highlight && d.category === spec.highlight ? theme.accent : theme.primary,
+              color: spec.highlight && d.category === spec.highlight ? colors.highlight : colors.series[0],
               borderRadius: horizontal
                 ? [0, layout.accentWidth, layout.accentWidth, 0]
                 : [layout.accentWidth, layout.accentWidth, 0, 0],
@@ -90,10 +102,7 @@ export function buildAnimatedBarOption(
           show: show.valueLabels,
           position: horizontal ? 'right' : 'top',
           distance: Math.round(layout.valueLabelSize * 0.5),
-          color: theme.text,
-          fontSize: layout.valueLabelSize,
-          fontWeight: 600,
-          fontFamily: FONT_STACK,
+          ...valueLabelStyle(layout, theme),
           // Typed loosely so the signature stays assignable to ECharts' label callback.
           formatter: (p: { value?: unknown }) =>
             formatNumber(Number(p.value ?? 0), decimals, true, '', suffix),

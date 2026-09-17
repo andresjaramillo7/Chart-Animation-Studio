@@ -144,8 +144,8 @@ describe('resolution configuration', () => {
 describe('theme consistency', () => {
   const themeIds = Object.keys(THEMES) as ThemeId[];
 
-  it('defines all five colors for each of the three themes', () => {
-    expect(themeIds).toEqual(['dark-minimal', 'dark-blue', 'light-minimal']);
+  it('defines all five colors for every theme, with Slayrr Dark first', () => {
+    expect(themeIds).toEqual(['slayrr-dark', 'dark-minimal', 'dark-blue', 'light-minimal']);
     for (const id of themeIds) {
       for (const key of ['background', 'primary', 'accent', 'text', 'grid'] as const) {
         expect(THEMES[id][key]).toMatch(/^#[0-9a-f]{6}$/i);

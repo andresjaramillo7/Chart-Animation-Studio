@@ -3,9 +3,18 @@ import { DEFAULT_COMPOSITION, type Composition, type DonutSpec } from '../shared
 import { clamp01 } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
 import { donutProportions } from '../shared/schemas.js';
+import { specColors } from '../shared/palette.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
 import { LANDSCAPE, getLayout, type Canvas } from '../shared/layout.js';
-import { FONT_STACK, baseOption, buildHeader, legendOption, seriesPalette, withAlpha } from './common.js';
+import {
+  FONT_STACK,
+  baseOption,
+  buildHeader,
+  legendOption,
+  mutedText,
+  wantsMotif,
+  withAlpha,
+} from './common.js';
 
 export interface DonutSegment {
   category: string;
@@ -55,12 +64,13 @@ export function buildDonutOption(
   const show = composition.show;
   const layout = getLayout(canvas);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show, wantsMotif(composition));
   const values = spec.data.map((d) => d.value);
   const decimals = decimalsOf(values);
   const proportions = donutProportions(spec.data);
   const segments = donutState(values, t);
-  const palette = seriesPalette(theme, spec.data.length);
+  const colors = specColors(spec, spec.data.length);
+  const palette = colors.series;
   const suffix = valueSuffix(spec.valueMode);
 
   const inner = Math.min(90, Math.max(0, spec.innerRadius));
@@ -91,9 +101,10 @@ export function buildDonutOption(
       // The *visible* arc, not the source value: this is what sweeps the ring open.
       value: seg.visible,
       itemStyle: {
-        color: highlighted ? theme.accent : palette[i],
+        color: highlighted ? colors.highlight : palette[i],
         borderColor: composition.background.mode === 'solid' ? theme.background : 'transparent',
-        borderWidth: composition.background.mode === 'solid' ? Math.round(layout.accentWidth * 0.5) : 0,
+        // A hairline separator between slices, never a heavy outline.
+        borderWidth: composition.background.mode === 'solid' ? 2 : 0,
       },
       label: {
         // Each read-out fades in over the back half of its own segment's sweep, so it
@@ -165,6 +176,7 @@ export function buildDonutOption(
       show,
       palette,
       spec.highlight,
+      colors.highlight,
     ),
     series: [
       {
@@ -188,7 +200,7 @@ export function buildDonutOption(
           rich: {
             name: {
               fontSize: Math.round(layout.valueLabelSize * 0.8),
-              color: withAlpha(theme.text, 0.72),
+              color: mutedText(theme),
               fontFamily: FONT_STACK,
               lineHeight: Math.round(layout.valueLabelSize * 1.05),
             },
@@ -204,7 +216,7 @@ export function buildDonutOption(
         labelLine: {
           length: Math.round(layout.valueLabelSize * 0.9),
           length2: Math.round(layout.valueLabelSize * 1.1),
-          lineStyle: { color: withAlpha(theme.text, 0.35), width: 2 },
+          lineStyle: { color: withAlpha(mutedText(theme), 0.55), width: 1 },
         },
         emphasis: { disabled: true },
       },

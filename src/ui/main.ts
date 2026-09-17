@@ -1,8 +1,15 @@
 import * as echarts from 'echarts';
+// The same bundled faces the render host uses, so preview and export match exactly.
+import '../shared/fonts.css';
 import {
   ALL_VISIBLE,
   CHART_ONLY,
+  DATA_SCHEMES,
+  DATA_SCHEME_IDS,
+  DEFAULT_ANIMATION,
   DEFAULT_COMPOSITION,
+  DEFAULT_DATA_SCHEME,
+  DEFAULT_THEME_ID,
   EXPORT_FORMAT_LABELS,
   supportsTransparency,
   THEMES,
@@ -12,6 +19,7 @@ import {
   type ChartSpec,
   type Composition,
   type DataPoint,
+  type DataSchemeId,
   type DonutDisplay,
   type Easing,
   type ExportFormat,
@@ -104,6 +112,9 @@ const els = {
   showAll: $<HTMLButtonElement>('showAll'),
   visibility: $<HTMLDivElement>('visibility'),
   theme: $<HTMLSelectElement>('theme'),
+  dataScheme: $<HTMLSelectElement>('dataScheme'),
+  schemeNote: $<HTMLDivElement>('schemeNote'),
+  motif: $<HTMLInputElement>('motif'),
   cBackground: $<HTMLInputElement>('cBackground'),
   cPrimary: $<HTMLInputElement>('cPrimary'),
   cAccent: $<HTMLInputElement>('cAccent'),
@@ -131,7 +142,17 @@ let seriesTable: SeriesTable | null = null;
 let scatterTable: ScatterTable | null = null;
 let heatTable: HeatTable | null = null;
 
-let gridColor: string = THEMES['dark-minimal'].grid;
+let gridColor: string = THEMES[DEFAULT_THEME_ID].grid;
+/**
+ * Brand tokens that are not directly editable: the secondary surface, the secondary
+ * text and the theme's own neutral data ramp. Kept alongside the four editable colours
+ * so a manual tweak never discards the rest of the identity.
+ */
+let themeExtras: Pick<Theme, 'surface' | 'textMuted' | 'series'> = {
+  surface: THEMES[DEFAULT_THEME_ID].surface,
+  textMuted: THEMES[DEFAULT_THEME_ID].textMuted,
+  series: THEMES[DEFAULT_THEME_ID].series,
+};
 /** Composition survives a change of template, preset or dataset. */
 let show: VisibilitySpec = { ...ALL_VISIBLE };
 let backgroundImageId: string | null = null;
@@ -148,6 +169,7 @@ for (const id of Object.keys(RESOLUTIONS) as ResolutionId[]) {
 for (const id of Object.keys(EXPORT_FORMAT_LABELS) as ExportFormat[]) {
   els.format.add(new Option(EXPORT_FORMAT_LABELS[id], id));
 }
+for (const id of DATA_SCHEME_IDS) els.dataScheme.add(new Option(DATA_SCHEMES[id].label, id));
 
 /* ---------- preview ---------- */
 
@@ -165,12 +187,32 @@ function ensureChart(): echarts.ECharts {
   return chart;
 }
 
+/** Tallest the preview is allowed to get, so a portrait composition stays on screen. */
+const PREVIEW_MAX_HEIGHT = 720;
+/** Matches the 1px border on .preview-frame, which sits outside its content box. */
+const PREVIEW_BORDER = 1;
+
+/**
+ * Scale the composition to fit the column, and size the frame to the result.
+ *
+ * The frame is sized to the scaled composition rather than left at full column width,
+ * so it wraps the chart exactly and there is no leftover strip beside it. The available
+ * width is measured from the column, never from the frame: the frame's own width is set
+ * here, so reading it back would shrink the preview a little more on every resize.
+ */
 function fitPreview(): void {
   const { width, height } = canvas();
   els.preview.style.width = `${width}px`;
   els.preview.style.height = `${height}px`;
-  const scale = Math.min(els.previewFrame.clientWidth / width, 720 / height);
+
+  const column = els.previewFrame.parentElement;
+  const available = Math.max(1, (column?.clientWidth ?? width) - PREVIEW_BORDER * 2);
+
+  // One scale for both axes, so the composition keeps its exact aspect ratio — 16:9 in
+  // landscape, 9:16 in portrait — and is never stretched or cropped.
+  const scale = Math.min(available / width, PREVIEW_MAX_HEIGHT / height);
   els.preview.style.transform = `scale(${scale})`;
+  els.previewFrame.style.width = `${Math.round(width * scale)}px`;
   els.previewFrame.style.height = `${Math.round(height * scale)}px`;
 }
 window.addEventListener('resize', () => {
@@ -185,14 +227,22 @@ const format = (): ExportFormat => els.format.value as ExportFormat;
 const transparentMode = (): boolean => els.bgMode.value === 'transparent';
 
 function theme(): Theme {
+  const primary = els.cPrimary.value;
   return {
     background: els.cBackground.value,
-    primary: els.cPrimary.value,
+    primary,
     accent: els.cAccent.value,
     text: els.cText.value,
     grid: gridColor,
+    surface: themeExtras.surface,
+    textMuted: themeExtras.textMuted,
+    // A manual Primary edit takes the head of the ramp, so hand-picked colours still
+    // win while the rest of the brand ramp survives.
+    series: themeExtras.series ? [primary, ...themeExtras.series.slice(1)] : undefined,
   };
 }
+
+const dataScheme = (): DataSchemeId => els.dataScheme.value as DataSchemeId;
 
 function composition(): Composition {
   return {
@@ -202,6 +252,7 @@ function composition(): Composition {
       fit: els.bgFit.value as ImageFit,
     },
     show,
+    motif: els.motif.checked,
   };
 }
 
@@ -211,6 +262,7 @@ function currentSpec(): ChartSpec {
     subtitle: els.subtitle.value,
     valueMode: els.valueMode.value as ValueMode,
     theme: theme(),
+    dataScheme: dataScheme(),
   };
   const highlight = els.highlight.value || null;
 
@@ -646,6 +698,7 @@ function applyTheme(id: ThemeId): void {
   els.cAccent.value = t.accent;
   els.cText.value = t.text;
   gridColor = t.grid;
+  themeExtras = { surface: t.surface, textMuted: t.textMuted, series: t.series };
 }
 
 /* ---------- presets ---------- */
@@ -688,6 +741,8 @@ function loadPreset(id: string): void {
   els.yTitle.value = preset.yTitle ?? '';
   els.symbolSize.value = String(preset.symbolSize ?? 34);
   els.heatReveal.value = preset.heatReveal ?? 'simultaneous';
+  els.dataScheme.value = preset.dataScheme ?? DEFAULT_DATA_SCHEME;
+  els.schemeNote.textContent = DATA_SCHEMES[dataScheme()].description;
   els.filename.value = preset.filename;
 
   els.variant.innerHTML = '';
@@ -900,6 +955,14 @@ els.theme.addEventListener('change', () => {
   applyTheme(els.theme.value as ThemeId);
   draw(1);
 });
+els.dataScheme.addEventListener('change', () => {
+  // Changing the data colours touches nothing else: not the data, the title, the
+  // timeline, the background or the composition.
+  els.schemeNote.textContent = DATA_SCHEMES[dataScheme()].description;
+  draw(1);
+  renderGallery();
+});
+els.motif.addEventListener('change', () => draw(1));
 els.resolution.addEventListener('change', refreshAll);
 els.format.addEventListener('change', refreshAll);
 els.bgMode.addEventListener('change', refreshAll);
@@ -981,7 +1044,14 @@ els.reveal.addEventListener('change', () => draw(1));
 
 els.bgMode.value = DEFAULT_COMPOSITION.background.mode;
 els.bgFit.value = DEFAULT_COMPOSITION.background.fit;
-applyTheme('dark-minimal');
+els.motif.checked = DEFAULT_COMPOSITION.motif ?? true;
+els.duration.value = String(DEFAULT_ANIMATION.durationSeconds);
+els.hold.value = String(DEFAULT_ANIMATION.holdSeconds);
+els.easing.value = DEFAULT_ANIMATION.easing;
+els.theme.value = DEFAULT_THEME_ID;
+els.dataScheme.value = DEFAULT_DATA_SCHEME;
+els.schemeNote.textContent = DATA_SCHEMES[DEFAULT_DATA_SCHEME].description;
+applyTheme(DEFAULT_THEME_ID);
 renderVisibilityToggles();
 loadPreset(PRESETS[0].id);
 els.csv.dataset.schema = TEMPLATE_META[template()].schema;

@@ -2,9 +2,18 @@ import type { EChartsOption } from 'echarts';
 import { DEFAULT_COMPOSITION, type Composition, type LineSpec } from '../shared/types.js';
 import { clamp01 } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
+import { dataColors } from '../shared/palette.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
 import { LANDSCAPE, estimateTextWidth, fitCategoryLabels, getLayout, type Canvas } from '../shared/layout.js';
-import { FONT_STACK, baseOption, buildHeader, valueAxis, withAlpha } from './common.js';
+import {
+  FONT_STACK,
+  baseOption,
+  buildHeader,
+  mutedText,
+  valueAxis,
+  valueLabelStyle,
+  wantsMotif,
+} from './common.js';
 
 export interface LineState {
   /** Fractional position of the drawing head along the category index axis. */
@@ -82,7 +91,9 @@ export function buildLineFamilyOption(
   const decimals = decimalsOf(spec.data.map((d) => d.value));
   const suffix = valueSuffix(spec.valueMode);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
+  const colors = dataColors(theme, spec.dataScheme, 1);
+
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show, wantsMotif(composition));
   const categories = spec.data.map((d) => d.category);
   const values = spec.data.map((d) => d.value);
   const n = values.length;
@@ -110,11 +121,11 @@ export function buildLineFamilyOption(
       value: [i, values[i]],
       symbolSize: showPoints ? size : 0,
       itemStyle: {
-        color: highlighted ? theme.accent : theme.primary,
+        color: highlighted ? colors.highlight : colors.series[0],
         borderColor: opaqueBackdrop ? theme.background : 'transparent',
         borderWidth: opaqueBackdrop ? Math.round(layout.lineWidth * 0.5) : 0,
       },
-      label: { show: show.valueLabels, color: highlighted ? theme.accent : theme.text },
+      label: { show: show.valueLabels, color: highlighted ? colors.highlight : theme.text },
     });
   }
   // The drawing head itself carries no marker or read-out — only revealed points do.
@@ -151,12 +162,12 @@ export function buildLineFamilyOption(
       min: 0,
       max: Math.max(1, n - 1),
       interval: 1,
-      axisLine: { show: show.axes, lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
+      axisLine: { show: show.axes, lineStyle: { color: theme.grid, width: 1 } },
       axisTick: { show: false },
       splitLine: { show: false },
       axisLabel: {
         show: show.axisLabels,
-        color: withAlpha(theme.text, 0.62),
+        color: mutedText(theme),
         fontSize: fit.fontSize,
         fontFamily: FONT_STACK,
         margin: Math.round(layout.axisLabelSize * 0.7),
@@ -173,12 +184,12 @@ export function buildLineFamilyOption(
         smooth: false,
         animation: false,
         clip: false,
-        lineStyle: { color: theme.primary, width: layout.lineWidth, cap: 'round', join: 'round' },
-        itemStyle: { color: theme.primary },
+        lineStyle: { color: colors.series[0], width: layout.lineWidth, cap: 'round', join: 'round' },
+        itemStyle: { color: colors.series[0] },
         ...(extras.areaOpacity !== undefined
           ? {
               areaStyle: {
-                color: theme.primary,
+                color: colors.series[0],
                 opacity: Math.max(0, Math.min(1, extras.areaOpacity)),
                 // The fill is clipped to the drawn polyline, never to the full dataset.
                 origin: 'start',
@@ -190,10 +201,7 @@ export function buildLineFamilyOption(
           show: show.valueLabels,
           position: 'top',
           distance: Math.round(layout.valueLabelSize * 0.6),
-          color: theme.text,
-          fontSize: layout.valueLabelSize,
-          fontWeight: 600,
-          fontFamily: FONT_STACK,
+          ...valueLabelStyle(layout, theme),
           formatter: (p: { value?: unknown }) => {
             const pair = p.value as [number, number] | undefined;
             return formatNumber(Number(pair?.[1] ?? 0), decimals, true, '', suffix);

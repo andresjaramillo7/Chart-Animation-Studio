@@ -7,6 +7,7 @@ This app is self-contained. It reads nothing but the CSV and background images y
 it, and writes nothing outside `outputs/` and its own `.cache/`. Uploaded CSV files are
 read in the browser and never modified.
 
+**Identity:** Slayrr Dark — dark editorial, Inter + IBM Plex Mono, red reserved for emphasis
 **Templates (9):** Animated Bar · Comparison · Stacked Bar · Animated Line · Area · Donut · Scatter · Heatmap · Big Number
 **Resolutions:** 1920×1080 landscape and 1080×1920 portrait (Shorts), both 30 fps
 **Formats:** MP4 (H.264) · PNG (final frame) · PNG sequence (every frame, RGBA)
@@ -126,6 +127,79 @@ and transparent mode compose freely.
 Composition settings are independent of the chart: changing preset, template, dataset or
 animation settings leaves the background and visibility untouched.
 
+## The SLAYRR visual identity
+
+The app opens with **Slayrr Dark** already applied — theme, data colours, motion and the
+brand motif. A typical chart needs no styling at all: pick a template, paste data or load
+a preset, export.
+
+### Brand tokens
+
+| Token | Value | Used for |
+|---|---|---|
+| Obsidian | `#0D0F14` | page surface |
+| Carbon | `#171A22` | secondary surface |
+| Ivory | `#F2F3F5` | primary text, the Big Number figure |
+| Ash | `#A8AFBC` | secondary text, axis and legend labels |
+| Divider | `#272D38` | gridlines, axis lines |
+| Slayrr Red | `#D7263D` | the motif rule, and emphasis only |
+| Neutrals | `#7C8595` `#5D6675` `#3F4653` | ordinary data |
+| Gold | `#C6A45D` | resources and economy |
+| Emerald | `#4DAA91` | semantic positive, when explicitly mapped |
+| Steel Blue | `#669BC7` | categorical separation |
+
+### Brand colours and data colours are separate
+
+This is the architectural rule of the identity: **Slayrr Red is not a data colour.** It
+paints the motif rule and an intentionally highlighted datum, and nothing else. A chart
+with no highlight contains no red at all and is still unmistakably SLAYRR — the identity
+comes from the surface, the typography, the spacing and the restraint.
+
+Data colours come from a separate **data colour scheme**, chosen independently of the
+theme:
+
+| Scheme | Data colours | For |
+|---|---|---|
+| **Neutral + Red** (default) | the theme's neutral ramp | ordinary data; red only where you highlight |
+| **Gold** | gold, then neutrals | resources, economy, gold-deficit visuals |
+| **Diverging** | red / neutral / emerald **by position** | meaningful negative–neutral–positive comparisons |
+| **Categorical** | steel, gold, emerald, neutral, red, slate | when several series must be told apart |
+
+Diverging is mapped strictly by position. Nothing inspects a category name to decide
+what is "good" or "bad", and no preset adopts the gold scheme merely because its copy
+mentions gold — the Comeback Curve — Gold preset opts in explicitly.
+
+Switching scheme changes only the data colours: not the data, the title, the timeline,
+the background or the composition. Editing **Primary** by hand still wins, and keeps the
+rest of the brand ramp.
+
+### Typography
+
+Inter for everything the reader reads — titles, subtitles, axis labels, legends, value
+read-outs, the hero number — with tabular figures so columns of numbers do not shift
+between frames. IBM Plex Mono is available for small technical annotations and is
+deliberately not used for ordinary labels.
+
+Both faces are bundled from local files (`src/shared/fonts.css`, via `@fontsource`), so
+the editor and the headless renderer resolve identical binaries with no network access
+and no dependency on fonts installed on the machine. The renderer loads each required
+face explicitly, waits for it, and **refuses to capture frames** if one is missing rather
+than silently shipping a system fallback. Licenses: `THIRD-PARTY-LICENSES.md`.
+
+### The brand motif
+
+A short thin red rule sits above the title, aligned to the same left margin as
+everything else. It is optional (**Brand accent rule** in the editor), never inside the
+plot area, disappears together with the titling so Chart Only stays clean, and costs
+nothing in a transparent export. There is no logo, no avatar, no watermark.
+
+### Motion
+
+Defaults are **1.8 s** animation, a **1.0 s** hold, **ease-out**, at 30 fps. Under the
+frame-count rule that is `round(1.8 × 30) = 54` animation frames plus
+`max(1, round(1.0 × 30)) = 30` hold frames — **84 frames, a 2.800 s clip**. No bounce,
+overshoot or elastic settle. An explicit setting you choose is always respected.
+
 ### The nine templates
 
 | Template | Group | CSV columns | Notes |
@@ -145,6 +219,7 @@ animation settings leaves the background and visibility untouched.
 | Preset | Template | Data |
 |---|---|---|
 | Comeback Curve | Animated Bar | Comeback rate by gold deficit, 7 buckets |
+| Comeback Curve — Gold | Animated Bar | The same real data, with the Gold scheme explicitly chosen |
 | Comeback Curve — Line | Animated Line | The same real dataset |
 | Comeback Curve — Area | Area | The same real dataset |
 | Scaling Comparison | Comparison | Comeback rate by champion scaling, 3 categories |
@@ -280,10 +355,10 @@ numeric value, decimal precision, prefix and suffix directly — no placeholder 
 
 ### Themes
 
-Dark Minimal (default), Dark Blue and Light Minimal. Each defines a background,
-primary, accent, text and gridline color, applied identically across all four
-templates in both the preview and the exported video. The four main colors stay
-editable by hand after picking a theme.
+**Slayrr Dark** is the default and the recommended option. Dark Minimal, Dark Blue and
+Light Minimal remain available. Each defines a background, primary, accent, text and
+gridline colour, applied identically across all nine templates in both the preview and
+the exported video, and the four main colours stay editable by hand.
 
 ## Troubleshooting
 

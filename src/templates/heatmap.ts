@@ -3,9 +3,18 @@ import { DEFAULT_COMPOSITION, type Composition, type HeatmapSpec } from '../shar
 import { clamp01, itemProgress } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
 import { cellKey } from '../shared/schemas.js';
+import { specColors } from '../shared/palette.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
 import { LANDSCAPE, fitCategoryLabels, getLayout, type Canvas } from '../shared/layout.js';
-import { FONT_STACK, baseOption, buildHeader, mix, withAlpha } from './common.js';
+import {
+  FONT_STACK,
+  baseOption,
+  buildHeader,
+  mutedText,
+  valueLabelStyle,
+  wantsMotif,
+  withAlpha,
+} from './common.js';
 
 export interface HeatmapCellState {
   x: string;
@@ -51,7 +60,7 @@ export function buildHeatmapOption(
   const show = composition.show;
   const layout = getLayout(canvas);
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show, wantsMotif(composition));
   const values = spec.cells.map((c) => c.value);
   const decimals = decimalsOf(values);
   const suffix = valueSuffix(spec.valueMode);
@@ -62,13 +71,10 @@ export function buildHeatmapOption(
   const scaleMin = spec.valueMode === 'percent' ? 0 : Math.min(...values, 0);
   const scaleMax = spec.valueMode === 'percent' ? 100 : Math.max(...values, scaleMin + 1);
 
-  const ramp = [
-    mix(theme.background, theme.primary, 0.35),
-    mix(theme.primary, theme.background, 0.15),
-    theme.primary,
-    mix(theme.primary, theme.accent, 0.55),
-    theme.accent,
-  ];
+  // A deliberate single-direction ramp from the active scheme, so colour preserves the
+  // numeric ordering. Nothing here turns a quantitative scale into arbitrary categorical
+  // colours, and no diverging scale is applied unless one is explicitly chosen.
+  const ramp = specColors(spec, 1).sequential;
 
   const scaleHeight = show.legend ? Math.round(layout.axisLabelSize * 3.2) : 0;
   const plotWidth = layout.width - layout.gridLeft - layout.gridRight;
@@ -79,7 +85,7 @@ export function buildHeatmapOption(
   );
 
   const axisBase = {
-    axisLine: { show: show.axes, lineStyle: { color: withAlpha(theme.text, 0.22), width: 2 } },
+    axisLine: { show: show.axes, lineStyle: { color: theme.grid, width: 1 } },
     axisTick: { show: false },
     splitArea: { show: false },
     splitLine: { show: false },
@@ -102,7 +108,7 @@ export function buildHeatmapOption(
       ...axisBase,
       axisLabel: {
         show: show.axisLabels,
-        color: withAlpha(theme.text, 0.62),
+        color: mutedText(theme),
         fontSize: xFit.fontSize,
         fontFamily: FONT_STACK,
         margin: Math.round(layout.axisLabelSize * 0.7),
@@ -118,7 +124,7 @@ export function buildHeatmapOption(
       ...axisBase,
       axisLabel: {
         show: show.axisLabels,
-        color: withAlpha(theme.text, 0.62),
+        color: mutedText(theme),
         fontSize: layout.axisLabelSize,
         fontFamily: FONT_STACK,
         margin: Math.round(layout.axisLabelSize * 0.6),
@@ -145,8 +151,8 @@ export function buildHeatmapOption(
       ],
       textGap: Math.round(layout.axisLabelSize * 0.6),
       textStyle: {
-        color: withAlpha(theme.text, 0.7),
-        fontSize: Math.round(layout.axisLabelSize * 0.85),
+        color: mutedText(theme),
+        fontSize: layout.legendSize,
         fontFamily: FONT_STACK,
       },
       formatter: (v: number) => formatNumber(v, 0, true, '', suffix),
@@ -175,10 +181,7 @@ export function buildHeatmapOption(
           })),
         label: {
           show: show.valueLabels,
-          color: theme.text,
-          fontSize: Math.round(layout.valueLabelSize * 0.72),
-          fontWeight: 600,
-          fontFamily: FONT_STACK,
+          ...valueLabelStyle(layout, theme, Math.round(layout.valueLabelSize * 0.78)),
           formatter: (p: { value?: unknown }) => {
             const triple = p.value as [number, number, number] | undefined;
             return formatNumber(Number(triple?.[2] ?? 0), decimals, true, '', suffix);

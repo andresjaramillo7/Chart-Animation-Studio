@@ -3,7 +3,7 @@ import { DEFAULT_COMPOSITION, type BigNumberSpec, type Composition } from '../sh
 import { clamp01 } from '../shared/timeline.js';
 import { formatNumber } from '../shared/format.js';
 import { LANDSCAPE, estimateTextWidth, getLayout, type Canvas } from '../shared/layout.js';
-import { FONT_STACK, baseOption, buildHeader } from './common.js';
+import { FONT_STACK, baseOption, buildHeader, wantsMotif } from './common.js';
 
 /**
  * The displayed value at a given progress.
@@ -29,7 +29,7 @@ export function buildBigNumberOption(
 ): EChartsOption {
   const { theme } = spec;
   const layout = getLayout(canvas);
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, composition.show);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, composition.show, wantsMotif(composition));
 
   const text = bigNumberText(spec, progress);
   // The final value is the widest the read-out ever gets; size against that so the
@@ -57,7 +57,9 @@ export function buildBigNumberOption(
           x: Math.round(layout.width / 2),
           y: Math.round(centreY),
           text,
-          fill: theme.accent,
+          // The figure is the protagonist, so it carries the primary text colour. The
+          // only red in this composition is the small motif rule above the title.
+          fill: theme.text,
           font: `700 ${fontSize}px ${FONT_STACK}`,
           textAlign: 'center',
           textVerticalAlign: 'middle',

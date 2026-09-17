@@ -13,6 +13,7 @@ import {
   type VisibilitySpec,
 } from '../src/shared/types.js';
 import { cellKey, validateDonutData, validatePercentStack } from '../src/shared/schemas.js';
+import { isDataSchemeId } from '../src/shared/brand.js';
 import { RESOLUTIONS } from '../src/shared/layout.js';
 import { TEMPLATE_META, isTemplateId } from '../src/templates/index.js';
 import { isUploadId } from './paths.js';
@@ -90,6 +91,10 @@ function validateComposition(composition: Composition | undefined, errors: strin
     }
   }
 
+  if (composition.motif != null && typeof composition.motif !== 'boolean') {
+    errors.push('"composition.motif" must be true or false.');
+  }
+
   const show = composition.show;
   if (!show || typeof show !== 'object') {
     errors.push('Missing "composition.show".');
@@ -114,6 +119,10 @@ function validateChart(chart: ChartSpec | undefined, errors: string[]): void {
 
   const mode = chart.valueMode as ValueMode;
   if (mode !== 'percent' && mode !== 'number') errors.push('"chart.valueMode" must be "percent" or "number".');
+
+  if (chart.dataScheme != null && !isDataSchemeId(chart.dataScheme)) {
+    errors.push('"chart.dataScheme" must be a known data color scheme.');
+  }
 
   for (const key of ['background', 'primary', 'accent', 'text', 'grid'] as const) {
     const v = chart.theme?.[key];

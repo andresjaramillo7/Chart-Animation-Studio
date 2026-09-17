@@ -1,5 +1,9 @@
 /** Core data + configuration contracts shared by the UI, templates, and export backend. */
 
+import { BRAND, type DataSchemeId } from './brand.js';
+
+export * from './brand.js';
+
 /** A single parsed data point. Category order in an array is always significant. */
 export interface DataPoint {
   category: string;
@@ -16,16 +20,41 @@ export type ValueMode = 'percent' | 'number';
 
 export interface Theme {
   background: string;
+  /** Default data color, and the first entry of the theme's own neutral ramp. */
   primary: string;
+  /** Emphasis color. Reserved for intentional highlights, never a default. */
   accent: string;
   text: string;
   /** Subtle gridline color. Kept explicit so each theme controls its own contrast. */
   grid: string;
+  /** Secondary surface, above the page. Falls back to a blend of background and text. */
+  surface?: string;
+  /** Secondary text. Falls back to a dimmed `text`. */
+  textMuted?: string;
+  /**
+   * The theme's own neutral data ramp, used by the default data scheme. A theme that
+   * does not declare one derives a ramp from `primary`.
+   */
+  series?: string[];
 }
 
-export type ThemeId = 'dark-minimal' | 'dark-blue' | 'light-minimal';
+export type ThemeId = 'slayrr-dark' | 'dark-minimal' | 'dark-blue' | 'light-minimal';
 
 export const THEMES: Record<ThemeId, Theme> = {
+  /**
+   * SLAYRR Dark — the channel identity. Dark editorial surface, ivory ink, a restrained
+   * neutral data ramp, and the signature red held back for emphasis only.
+   */
+  'slayrr-dark': {
+    background: BRAND.obsidian,
+    primary: BRAND.neutral1,
+    accent: BRAND.red,
+    text: BRAND.ivory,
+    grid: BRAND.divider,
+    surface: BRAND.carbon,
+    textMuted: BRAND.ash,
+    series: [BRAND.neutral1, BRAND.neutral2, BRAND.neutral3],
+  },
   'dark-minimal': {
     background: '#0E1116',
     primary: '#3E7CB1',
@@ -50,12 +79,17 @@ export const THEMES: Record<ThemeId, Theme> = {
 };
 
 export const THEME_LABELS: Record<ThemeId, string> = {
+  'slayrr-dark': 'Slayrr Dark',
   'dark-minimal': 'Dark Minimal',
   'dark-blue': 'Dark Blue',
   'light-minimal': 'Light Minimal',
 };
 
-/** The default theme. */
+/** The channel identity, and the theme every new chart and preset opens with. */
+export const DEFAULT_THEME_ID: ThemeId = 'slayrr-dark';
+export const SLAYRR_DARK: Theme = THEMES['slayrr-dark'];
+
+/** Retained for the earlier presets and tests that name this theme directly. */
 export const DARK_MINIMAL: Theme = THEMES['dark-minimal'];
 
 export type TemplateId =
@@ -80,6 +114,12 @@ interface SpecBase {
   subtitle: string;
   valueMode: ValueMode;
   theme: Theme;
+  /**
+   * Which colours the data is painted with. Separate from the theme, so changing the
+   * scheme never touches the brand surface, and changing the theme never reassigns
+   * data meaning. Defaults to the theme's own neutral ramp with accent emphasis.
+   */
+  dataScheme?: DataSchemeId;
 }
 
 export interface BarSpec extends SpecBase {
@@ -273,6 +313,11 @@ export interface VisibilitySpec {
 export interface Composition {
   background: BackgroundSpec;
   show: VisibilitySpec;
+  /**
+   * The small red rule above the title. Optional, never inside the plot area, and
+   * absent whenever the titling is hidden. Defaults to on.
+   */
+  motif?: boolean;
 }
 
 export const ALL_VISIBLE: VisibilitySpec = {
@@ -302,6 +347,19 @@ export const CHART_ONLY: VisibilitySpec = {
 export const DEFAULT_COMPOSITION: Composition = {
   background: { mode: 'solid', imageId: null, fit: 'cover' },
   show: ALL_VISIBLE,
+  motif: true,
+};
+
+/**
+ * SLAYRR motion: deliberate and controlled, with no bounce, overshoot or elastic
+ * settle. At 30 fps these defaults produce round(1.8 × 30) = 54 animation frames plus
+ * max(1, round(1.0 × 30)) = 30 hold frames — 84 frames, a 2.800 s clip.
+ */
+export const DEFAULT_ANIMATION: AnimationSpec = {
+  durationSeconds: 1.8,
+  holdSeconds: 1.0,
+  easing: 'ease-out',
+  fps: 30,
 };
 
 /** MP4 stays H.264/yuv420p; the PNG formats are the transparency-capable ones. */

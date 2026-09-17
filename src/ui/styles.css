@@ -61,7 +61,16 @@ button.primary { background: var(--blue); border-color: var(--blue); color: #fff
 .hint { font-size: 12px; color: var(--muted); }
 .preview-frame {
   position: relative; overflow: hidden; border: 1px solid var(--line);
-  border-radius: 10px; background: #000; width: 100%;
+  border-radius: 10px;
+  /* The editor surface, not black: this shows only in the rounded corners, and behind
+     a transparent composition it is replaced by the checkerboard below. */
+  background: var(--bg);
+  /* width/height are set from the scaled composition, so they must describe the content
+     box exactly; the border then draws outside it instead of eating two pixels. */
+  box-sizing: content-box;
+  max-width: 100%;
+  /* Centred in the column once the frame is narrower than the space available. */
+  margin-inline: auto;
 }
 .preview { position: absolute; top: 0; left: 0; transform-origin: top left; }
 

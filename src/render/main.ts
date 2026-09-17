@@ -1,4 +1,7 @@
 import * as echarts from 'echarts';
+// Bundled locally by Vite; nothing here reaches a font CDN at render time.
+import '../shared/fonts.css';
+import { REQUIRED_FACES } from '../shared/layout.js';
 import { DEFAULT_COMPOSITION, type ChartSpec, type Composition } from '../shared/types.js';
 import { buildOption } from '../templates/index.js';
 
@@ -49,9 +52,35 @@ async function init(
   currentComposition = composition;
   currentCanvas = { width, height };
 
-  // Text metrics depend on loaded fonts; measuring before they are ready would
-  // shift labels between frames.
-  if (document.fonts?.ready) await document.fonts.ready;
+  // Text metrics depend on loaded fonts; measuring before they are ready would shift
+  // labels between frames — and a silent fallback to Arial would ship the wrong identity.
+  await ensureFonts();
+}
+
+/**
+ * Load and verify the brand faces.
+ *
+ * ECharts draws to a canvas, and a canvas alone does not always make the browser
+ * consider a web font "used", so each face is requested explicitly before waiting.
+ * A face that still fails to resolve is reported rather than silently replaced.
+ */
+async function ensureFonts(): Promise<void> {
+  if (!document.fonts) return;
+  await Promise.all(REQUIRED_FACES.map((face) => document.fonts.load(face).catch(() => [])));
+  await document.fonts.ready;
+
+  const missing = REQUIRED_FACES.filter((face) => !document.fonts.check(face));
+  if (missing.length) {
+    throw new Error(
+      `Brand fonts did not load: ${missing.join(', ')}. The export would silently fall back ` +
+        'to a system font, so it was stopped instead.',
+    );
+  }
+}
+
+/** Which brand faces actually resolved, for verification from outside the page. */
+function fontReport(): { face: string; loaded: boolean }[] {
+  return REQUIRED_FACES.map((face) => ({ face, loaded: document.fonts?.check(face) ?? false }));
 }
 
 /** Paint the layer behind the chart, waiting for any image to finish decoding. */
@@ -132,8 +161,13 @@ function nextPaint(): Promise<void> {
 
 declare global {
   interface Window {
-    ChartStudio: { init: typeof init; renderFrame: typeof renderFrame; ready: true };
+    ChartStudio: {
+      init: typeof init;
+      renderFrame: typeof renderFrame;
+      fontReport: typeof fontReport;
+      ready: true;
+    };
   }
 }
 
-window.ChartStudio = { init, renderFrame, ready: true };
+window.ChartStudio = { init, renderFrame, fontReport, ready: true };

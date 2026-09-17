@@ -2,17 +2,18 @@ import type { EChartsOption } from 'echarts';
 import { DEFAULT_COMPOSITION, type Composition, type StackedBarSpec } from '../shared/types.js';
 import { clamp01, itemProgress } from '../shared/timeline.js';
 import { decimalsOf } from '../shared/csv.js';
+import { specColors } from '../shared/palette.js';
 import { stackProportions, type SeriesTable } from '../shared/schemas.js';
 import { formatNumber, valueSuffix } from '../shared/format.js';
 import { LANDSCAPE, fitCategoryLabels, getLayout, type Canvas } from '../shared/layout.js';
 import {
-  FONT_STACK,
   baseOption,
   buildHeader,
   categoryAxis,
   legendOption,
-  seriesPalette,
   valueAxis,
+  valueLabelStyle,
+  wantsMotif,
   withAlpha,
 } from './common.js';
 
@@ -58,8 +59,11 @@ export function buildStackedBarOption(
   const horizontal = (spec.orientation ?? 'vertical') === 'horizontal';
   const isPercentStack = spec.stackMode === 'percent';
 
-  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show);
-  const palette = seriesPalette(theme, spec.series.length);
+  const header = buildHeader(spec.title, spec.subtitle, layout, theme, show, wantsMotif(composition));
+  // Series N always takes colour N, so a series keeps its colour across frames,
+  // preview, export and related charts.
+  const colors = specColors(spec, spec.series.length);
+  const palette = colors.series;
   const values = stackedValues(spec, progress);
 
   const rawDecimals = decimalsOf(spec.series.flatMap((s) => s.values));
@@ -96,6 +100,7 @@ export function buildStackedBarOption(
       show,
       palette,
       spec.highlight,
+      colors.highlight,
     ),
     grid: {
       left: layout.gridLeft,
@@ -122,7 +127,7 @@ export function buildStackedBarOption(
           return {
             value: v,
             itemStyle: {
-              color: emphasized || categoryEmphasized ? theme.accent : palette[si],
+              color: emphasized || categoryEmphasized ? colors.highlight : palette[si],
               // Dim other categories only when a specific category is emphasized.
               opacity:
                 spec.highlight !== null && spec.categories.includes(spec.highlight) && !categoryEmphasized ? 0.45 : 1,
@@ -137,10 +142,7 @@ export function buildStackedBarOption(
         label: {
           show: show.valueLabels,
           position: 'inside',
-          color: theme.text,
-          fontSize: Math.round(layout.valueLabelSize * 0.78),
-          fontWeight: 600,
-          fontFamily: FONT_STACK,
+          ...valueLabelStyle(layout, theme, Math.round(layout.valueLabelSize * 0.78)),
           textBorderWidth: 0,
           formatter: (p: { value?: unknown }) => formatNumber(Number(p.value ?? 0), decimals, true, '', suffix),
         },
